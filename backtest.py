@@ -20,23 +20,27 @@ def _to_yahoo_ticker(symbol: str) -> str:
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
     try:
         ticker = _to_yahoo_ticker(symbol)
-        df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
+        logger.info(f"[{symbol}] Fetching from Yahoo Finance as {ticker}")
+        stock = yf.Ticker(ticker)
+        df = stock.history(period="2y", interval="1d", auto_adjust=True)
+
         if df.empty:
-            logger.warning(f"[{symbol}] No data from Yahoo Finance")
+            logger.warning(f"[{symbol}] No data returned from Yahoo Finance")
             return pd.DataFrame()
 
         df = df.reset_index()
-        df.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in df.columns]
-        df = df.rename(columns={"date": "date", "open": "open", "high": "high",
-                                  "low": "low", "close": "close", "volume": "volume"})
-        df["date"] = pd.to_datetime(df["date"])
+        df = df.rename(columns={
+            "Date": "date", "Open": "open", "High": "high",
+            "Low": "low", "Close": "close", "Volume": "volume"
+        })
+        df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
         df = df[["date", "open", "high", "low", "close", "volume"]].dropna()
         df = df.sort_values("date", ascending=True).reset_index(drop=True)
         logger.info(f"[{symbol}] Fetched {len(df)} days from Yahoo Finance")
         return df
 
     except Exception as e:
-        logger.error(f"[{symbol}] Fetch error: {e}")
+        logger.error(f"[{symbol}] Fetch error: {e}", exc_info=True)
         return pd.DataFrame()
 
 # ─────────────────────────────────────────────────────────────

@@ -72,6 +72,25 @@ def get_portfolio():
 
 _backtest_result = {"status": "idle", "result": None}
 
+@router.get("/backtest/test-fetch")
+def test_fetch():
+    import yfinance as yf
+    try:
+        ticker = "RELIANCE.BO"
+        stock = yf.Ticker(ticker)
+        df = stock.history(period="1mo")
+        if df.empty:
+            return {"status": "empty", "ticker": ticker}
+        return {
+            "status": "ok",
+            "ticker": ticker,
+            "rows": len(df),
+            "columns": list(df.columns),
+            "latest_close": float(df["Close"].iloc[-1])
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 @router.post("/backtest")
 def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
     global _backtest_result
