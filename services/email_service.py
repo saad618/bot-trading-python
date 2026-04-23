@@ -22,4 +22,6 @@ def send_html_email(subject: str, html: str):
 
         logger.info(f"Email sent to {settings.REPORT_EMAIL}")
     except Exception as e:
+        import traceback
         logger.error(f"Failed to send email: {e}")
+        logger.error(traceback.format_exc())
