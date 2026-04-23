@@ -95,7 +95,7 @@ def test_fetch():
         return {"status": "error", "error": str(e)}
 
 @router.post("/backtest")
-def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
+def start_backtest(background_tasks: BackgroundTasks, days: int = 365, buy_threshold: int = None, sell_threshold: int = None):
     global _backtest_result
     if _backtest_result["status"] == "running":
         return {"status": "already running — check /api/backtest/result"}
@@ -104,13 +104,13 @@ def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
     def _run():
         global _backtest_result
         try:
-            result = bt.run(lookback_days=days)
+            result = bt.run(lookback_days=days, buy_threshold=buy_threshold, sell_threshold=sell_threshold)
             _backtest_result = {"status": "done", "result": result}
         except Exception as e:
             _backtest_result = {"status": "error", "result": str(e)}
 
     background_tasks.add_task(_run)
-    return {"status": "started", "message": f"Backtesting {days} days — takes ~65 seconds. Poll /api/backtest/result"}
+    return {"status": "started", "message": f"Backtesting {days} days (buy≥{buy_threshold or 5}, sell≤{sell_threshold or -5}) — takes ~65 seconds. Poll /api/backtest/result"}
 
 @router.get("/backtest/result")
 def get_backtest_result():

@@ -61,11 +61,14 @@ def _fetch_full_history(symbol: str) -> pd.DataFrame:
 # Single-symbol simulation
 # ─────────────────────────────────────────────────────────────
 
-def _simulate(symbol: str, df: pd.DataFrame, capital: float) -> dict:
+def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int = None, sell_threshold: int = None) -> dict:
     trades = []
     cash = capital
     position = None
     WARMUP = 60
+    max_score = -99
+    min_score = 99
+    score_samples = []
 
     for i in range(WARMUP, len(df)):
         window = df.iloc[:i + 1].sort_values("date", ascending=False).reset_index(drop=True)
@@ -100,8 +103,17 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float) -> dict:
                 continue
 
         result = composite.evaluate(window)
+        if result.score > max_score:
+            max_score = result.score
+        if result.score < min_score:
+            min_score = result.score
+        if len(score_samples) < 5:
+            score_samples.append({"date": str(today["date"].date()), "score": result.score, "breakdown": result.breakdown})
 
-        if result.signal == "BUY" and position is None:
+        buy_thr  = buy_threshold  if buy_threshold  is not None else settings.BUY_SCORE_THRESHOLD
+        sell_thr = sell_threshold if sell_threshold is not None else settings.SELL_SCORE_THRESHOLD
+
+        if result.score >= buy_thr and position is None:
             qty = risk_manager.calculate_quantity(cash, price)
             if qty > 0 and cash >= qty * price:
                 cash -= qty * price
@@ -114,7 +126,7 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float) -> dict:
                 trades.append({"date": str(today["date"].date()), "type": "BUY",
                                 "price": round(price, 2), "qty": qty, "pnl": 0, "reason": "SIGNAL"})
 
-        elif result.signal == "SELL" and position:
+        elif result.score <= sell_thr and position:
             pnl = (price - position["entry"]) * position["qty"]
             cash += position["qty"] * price
             trades.append({"date": str(today["date"].date()), "type": "SELL",
@@ -130,7 +142,8 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float) -> dict:
                         "price": round(price, 2), "qty": position["qty"],
                         "pnl": round(pnl, 2), "reason": "END_OF_PERIOD"})
 
-    return {"symbol": symbol, "trades": trades, "metrics": _metrics(trades, capital)}
+    diagnostics = {"max_score": max_score, "min_score": min_score, "score_samples": score_samples}
+    return {"symbol": symbol, "trades": trades, "metrics": _metrics(trades, capital), "diagnostics": diagnostics}
 
 # ─────────────────────────────────────────────────────────────
 # Metrics calculation
@@ -192,7 +205,7 @@ def _metrics(trades: list, capital: float) -> dict:
 # Full portfolio backtest
 # ─────────────────────────────────────────────────────────────
 
-def run(lookback_days: int = 365) -> dict:
+def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int = None) -> dict:
     symbols      = settings.SYMBOLS
     capital_each = settings.INITIAL_BALANCE / len(symbols)
     results      = []
@@ -210,11 +223,11 @@ def run(lookback_days: int = 365) -> dict:
         cutoff = df["date"].max() - pd.Timedelta(days=lookback_days)
         df = df[df["date"] >= cutoff].reset_index(drop=True)
 
-        if len(df) < 80:
-            logger.warning(f"[{symbol}] Skipped — insufficient history")
+        if len(df) < 70:
+            logger.warning(f"[{symbol}] Skipped — insufficient history ({len(df)} bars)")
             continue
 
-        results.append(_simulate(symbol, df, capital_each))
+        results.append(_simulate(symbol, df, capital_each, buy_threshold, sell_threshold))
 
     # Portfolio summary
     all_pnl = [t["pnl"] for r in results for t in r["trades"] if t["type"] == "SELL"]
