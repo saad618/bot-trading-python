@@ -83,11 +83,11 @@ def test_fetch():
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         r = requests.get(url, headers=headers, timeout=30)
         text = r.text.strip()
-        if r.status_code != 200 or "No data" in text or len(text.splitlines()) < 3:
-            return {"status": "failed", "http": r.status_code, "body": text[:300]}
-        df = pd.read_csv(StringIO(text))
-        rows = df.to_dict(orient="records")
-        return {"status": "ok", "source": "Stooq (free)", "rows": len(rows), "sample": rows[-1] if rows else None}
+        if r.status_code != 200:
+            return {"status": "failed", "http": r.status_code, "body": text[:500]}
+        # Return raw text so we can see exactly what Stooq sends
+        lines = text.splitlines()
+        return {"status": "raw", "http": r.status_code, "line_count": len(lines), "first_5_lines": lines[:5], "last_3_lines": lines[-3:]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
