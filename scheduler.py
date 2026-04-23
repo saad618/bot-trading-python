@@ -18,6 +18,7 @@ def _run_trading_cycle():
         db.close()
 
 def send_daily_report():
+    import traceback
     db = SessionLocal()
     try:
         today_trades = trading_svc.get_today_trades(db)
@@ -26,10 +27,13 @@ def send_daily_report():
         total_pnl = trading_svc.get_total_pnl(db)
         cash = portfolio_service.get_cash_balance()
 
-        subject = (f"[Trading Bot] Daily Report {date.today().strftime('%d-%b-%Y')} | "
-                   f"P&L: {'+' if today_pnl >= 0 else ''}₹{today_pnl:.2f}")
+        subject = ("[Trading Bot] Daily Report " + date.today().strftime('%d-%b-%Y') +
+                   " | P&L: " + ('+' if today_pnl >= 0 else '') + "Rs" + f"{today_pnl:.2f}")
         html = _build_html_report(today_trades, open_positions, today_pnl, total_pnl, cash)
         send_html_email(subject, html)
+    except Exception as e:
+        logger.error(f"send_daily_report failed: {e}")
+        logger.error(traceback.format_exc())
     finally:
         db.close()
 
@@ -53,12 +57,13 @@ def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
         trades_html = "<tr><td colspan='6' style='text-align:center;padding:15px;color:#888;'>No trades today</td></tr>"
     else:
         for t in trades:
-            type_color = "#2980b9" if t.type == "BUY" else "#8e44ad"
-            pnl_cell = (
-                f"<td style='color:{'#27ae60' if t.realized_pnl >= 0 else '#e74c3c'};font-weight:bold;'>"
-                f"{'+' if t.realized_pnl >= 0 else ''}₹{t.realized_pnl:.2f}</td>"
-                if t.type.value == "SELL" else "<td style='color:#888;'>—</td>"
-            )
+            type_color = "#2980b9" if t.type.value == "BUY" else "#8e44ad"
+            if t.type.value == "SELL":
+                pnl_color = "#27ae60" if t.realized_pnl >= 0 else "#e74c3c"
+                pnl_sign = "+" if t.realized_pnl >= 0 else ""
+                pnl_cell = f"<td style='color:{pnl_color};font-weight:bold;'>{pnl_sign}Rs{t.realized_pnl:.2f}</td>"
+            else:
+                pnl_cell = "<td style='color:#888;'>-</td>"
             trades_html += f"""
             <tr style='border-bottom:1px solid #eee;'>
                 <td style='padding:10px;font-weight:bold;'>{t.symbol.replace('.BSE','')}</td>
