@@ -1,9 +1,9 @@
-import os
 import time
 import logging
 import requests
 import numpy as np
 import pandas as pd
+from io import StringIO
 from config import settings
 from services import atr as atr_svc, risk_manager
 from strategies import composite
@@ -11,54 +11,38 @@ from strategies import composite
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Data fetching — Alpha Vantage with dedicated backtest key
+# Data fetching — Stooq (free, no API key required)
 # ─────────────────────────────────────────────────────────────
 
-def _to_twelve_data_symbol(symbol: str) -> str:
-    # RELIANCE.BSE → RELIANCE:BSE
-    return symbol.replace(".", ":")
+def _to_stooq_symbol(symbol: str) -> str:
+    # RELIANCE.BSE → reliance.bo  |  RELIANCE.NSE → reliance.ns
+    return symbol.replace(".BSE", ".BO").replace(".NSE", ".NS").lower()
 
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
-    api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-    if not api_key:
-        logger.error("TWELVE_DATA_API_KEY not set in environment variables")
-        return pd.DataFrame()
     try:
-        time.sleep(2)
-        td_symbol = _to_twelve_data_symbol(symbol)
-        logger.info(f"[{symbol}] Fetching history from Twelve Data as {td_symbol}...")
-        params = {
-            "symbol":     td_symbol,
-            "interval":   "1day",
-            "outputsize": 5000,
-            "apikey":     api_key,
-            "format":     "JSON"
-        }
-        r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30)
-        data = r.json()
+        stooq_sym = _to_stooq_symbol(symbol)
+        end   = pd.Timestamp.today().strftime("%Y%m%d")
+        start = (pd.Timestamp.today() - pd.Timedelta(days=800)).strftime("%Y%m%d")
+        url   = f"https://stooq.com/q/d/l/?s={stooq_sym}&d1={start}&d2={end}&i=d"
+        logger.info(f"[{symbol}] Fetching from Stooq ({stooq_sym})...")
 
-        if data.get("status") == "error":
-            logger.warning(f"[{symbol}] Twelve Data error: {data.get('message')}")
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        r = requests.get(url, headers=headers, timeout=30)
+
+        if r.status_code != 200:
+            logger.warning(f"[{symbol}] Stooq HTTP {r.status_code}")
             return pd.DataFrame()
 
-        values = data.get("values", [])
-        if not values:
-            logger.warning(f"[{symbol}] No data returned from Twelve Data")
+        text = r.text.strip()
+        if not text or "No data" in text or len(text.splitlines()) < 3:
+            logger.warning(f"[{symbol}] Stooq returned no data")
             return pd.DataFrame()
 
-        records = [
-            {
-                "date":   pd.to_datetime(v["datetime"]),
-                "open":   float(v["open"]),
-                "high":   float(v["high"]),
-                "low":    float(v["low"]),
-                "close":  float(v["close"]),
-                "volume": float(v.get("volume", 0)),
-            }
-            for v in values
-        ]
-        df = pd.DataFrame(records).sort_values("date", ascending=True).reset_index(drop=True)
-        logger.info(f"[{symbol}] Fetched {len(df)} days from Twelve Data")
+        df = pd.read_csv(StringIO(text))
+        df.columns = [c.lower() for c in df.columns]
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.sort_values("date", ascending=True).reset_index(drop=True)
+        logger.info(f"[{symbol}] Fetched {len(df)} days from Stooq")
         return df
 
     except Exception as e:

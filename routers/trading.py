@@ -74,35 +74,22 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import requests, os, time
-    api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-    if not api_key:
-        return {"status": "error", "message": "TWELVE_DATA_API_KEY not set in Railway Variables"}
-    results = {}
+    import requests, pandas as pd
+    from io import StringIO
     try:
-        # Test 1: US stock (key validity check)
-        params = {"symbol": "AAPL", "interval": "1day", "outputsize": 5, "apikey": api_key, "format": "JSON"}
-        r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
-        if r.get("status") == "error":
-            results["aapl_test"] = {"status": "failed", "message": r.get("message")}
-        else:
-            results["aapl_test"] = {"status": "ok", "rows": len(r.get("values", []))}
-
-        time.sleep(2)
-
-        # Test 2: BSE symbol
-        params["symbol"] = "RELIANCE:BSE"
-        params["outputsize"] = 30
-        r2 = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
-        if r2.get("status") == "error":
-            results["reliance_bse_test"] = {"status": "failed", "message": r2.get("message")}
-        else:
-            values = r2.get("values", [])
-            results["reliance_bse_test"] = {"status": "ok", "rows": len(values), "sample": values[0] if values else None}
-
+        end   = pd.Timestamp.today().strftime("%Y%m%d")
+        start = (pd.Timestamp.today() - pd.Timedelta(days=60)).strftime("%Y%m%d")
+        url   = f"https://stooq.com/q/d/l/?s=reliance.bo&d1={start}&d2={end}&i=d"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        r = requests.get(url, headers=headers, timeout=30)
+        text = r.text.strip()
+        if r.status_code != 200 or "No data" in text or len(text.splitlines()) < 3:
+            return {"status": "failed", "http": r.status_code, "body": text[:300]}
+        df = pd.read_csv(StringIO(text))
+        rows = df.to_dict(orient="records")
+        return {"status": "ok", "source": "Stooq (free)", "rows": len(rows), "sample": rows[-1] if rows else None}
     except Exception as e:
-        results["error"] = str(e)
-    return results
+        return {"status": "error", "error": str(e)}
 
 @router.post("/backtest")
 def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
