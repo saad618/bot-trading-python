@@ -1,8 +1,8 @@
 import time
 import logging
-import requests
 import numpy as np
 import pandas as pd
+import yfinance as yf
 from config import settings
 from services import atr as atr_svc, risk_manager
 from strategies import composite
@@ -10,40 +10,30 @@ from strategies import composite
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Data fetching
+# Data fetching — Yahoo Finance (free, unlimited, no API key)
 # ─────────────────────────────────────────────────────────────
+
+def _to_yahoo_ticker(symbol: str) -> str:
+    # Alpha Vantage: RELIANCE.BSE → Yahoo Finance: RELIANCE.BO
+    return symbol.replace(".BSE", ".BO").replace(".NSE", ".NS")
 
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
     try:
-        params = {
-            "function": "TIME_SERIES_DAILY",
-            "symbol": symbol,
-            "outputsize": "full",
-            "apikey": settings.API_KEY
-        }
-        r = requests.get(settings.API_BASE_URL, params=params, timeout=30)
-        data = r.json()
-
-        if "Note" in data or "Information" in data:
-            logger.warning(f"[{symbol}] Rate limit hit")
+        ticker = _to_yahoo_ticker(symbol)
+        df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
+        if df.empty:
+            logger.warning(f"[{symbol}] No data from Yahoo Finance")
             return pd.DataFrame()
 
-        ts = data.get("Time Series (Daily)", {})
-        if not ts:
-            return pd.DataFrame()
-
-        records = [
-            {
-                "date":   pd.to_datetime(d),
-                "open":   float(v["1. open"]),
-                "high":   float(v["2. high"]),
-                "low":    float(v["3. low"]),
-                "close":  float(v["4. close"]),
-                "volume": float(v["5. volume"]),
-            }
-            for d, v in ts.items()
-        ]
-        return pd.DataFrame(records).sort_values("date", ascending=True).reset_index(drop=True)
+        df = df.reset_index()
+        df.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in df.columns]
+        df = df.rename(columns={"date": "date", "open": "open", "high": "high",
+                                  "low": "low", "close": "close", "volume": "volume"})
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[["date", "open", "high", "low", "close", "volume"]].dropna()
+        df = df.sort_values("date", ascending=True).reset_index(drop=True)
+        logger.info(f"[{symbol}] Fetched {len(df)} days from Yahoo Finance")
+        return df
 
     except Exception as e:
         logger.error(f"[{symbol}] Fetch error: {e}")
@@ -191,8 +181,6 @@ def run(lookback_days: int = 365) -> dict:
 
     for i, symbol in enumerate(symbols):
         logger.info(f"Backtesting [{symbol}] ...")
-        if i > 0:
-            time.sleep(13)  # Alpha Vantage rate limit
 
         df = _fetch_full_history(symbol)
         if df.empty:
