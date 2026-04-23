@@ -78,18 +78,31 @@ def test_fetch():
     api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
     if not api_key:
         return {"status": "error", "message": "TWELVE_DATA_API_KEY not set in Railway Variables"}
+    results = {}
     try:
+        # Test 1: US stock (key validity check)
+        params = {"symbol": "AAPL", "interval": "1day", "outputsize": 5, "apikey": api_key, "format": "JSON"}
+        r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
+        if r.get("status") == "error":
+            results["aapl_test"] = {"status": "failed", "message": r.get("message")}
+        else:
+            results["aapl_test"] = {"status": "ok", "rows": len(r.get("values", []))}
+
         time.sleep(2)
-        params = {"symbol": "RELIANCE:BSE", "interval": "1day",
-                  "outputsize": 30, "apikey": api_key, "format": "JSON"}
-        data = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
-        if data.get("status") == "error":
-            return {"status": "failed", "message": data.get("message")}
-        values = data.get("values", [])
-        return {"status": "ok", "rows": len(values),
-                "sample": values[0] if values else None}
+
+        # Test 2: BSE symbol
+        params["symbol"] = "RELIANCE:BSE"
+        params["outputsize"] = 30
+        r2 = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
+        if r2.get("status") == "error":
+            results["reliance_bse_test"] = {"status": "failed", "message": r2.get("message")}
+        else:
+            values = r2.get("values", [])
+            results["reliance_bse_test"] = {"status": "ok", "rows": len(values), "sample": values[0] if values else None}
+
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        results["error"] = str(e)
+    return results
 
 @router.post("/backtest")
 def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
