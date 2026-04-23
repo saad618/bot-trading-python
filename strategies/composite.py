@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict
 import pandas as pd
 from config import settings
@@ -8,6 +8,9 @@ from strategies.breakout import BreakoutStrategy
 from strategies.volume import VolumeConfirmationStrategy
 from strategies.candlestick import CandlestickPatternStrategy
 from strategies.trend_filter import TrendFilterStrategy
+from strategies.macd import MacdStrategy
+from strategies.bollinger_bands import BollingerBandsStrategy
+from strategies.stochastic import StochasticStrategy
 
 @dataclass
 class StrategyResult:
@@ -15,9 +18,14 @@ class StrategyResult:
     breakdown: Dict[str, int]
     signal: str
 
+# All 9 strategies
+# Max possible score: EMA±2 + RSI±2 + MACD±2 + BRK±1 + VOL±1 + CDL±1 + TRD±1 + BB±1 + STOCH±1 = ±12
 _strategies = [
     EmaCrossoverStrategy(),
     RsiStrategy(),
+    MacdStrategy(),
+    BollingerBandsStrategy(),
+    StochasticStrategy(),
     BreakoutStrategy(),
     VolumeConfirmationStrategy(),
     CandlestickPatternStrategy(),
