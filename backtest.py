@@ -9,11 +9,19 @@ from strategies import composite
 
 logger = logging.getLogger(__name__)
 
+# Cache: {symbol: (fetched_at_timestamp, dataframe)}
+_data_cache: dict = {}
+_CACHE_TTL_SECONDS = 6 * 3600  # refresh every 6 hours
+
 # ─────────────────────────────────────────────────────────────
 # Data fetching — Alpha Vantage compact (100 bars, free tier)
 # ─────────────────────────────────────────────────────────────
 
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
+    cached_at, cached_df = _data_cache.get(symbol, (0, pd.DataFrame()))
+    if not cached_df.empty and (time.time() - cached_at) < _CACHE_TTL_SECONDS:
+        logger.info(f"[{symbol}] Using cached data ({len(cached_df)} bars)")
+        return cached_df
     try:
         logger.info(f"[{symbol}] Fetching from Alpha Vantage (compact)...")
         params = {
@@ -51,6 +59,7 @@ def _fetch_full_history(symbol: str) -> pd.DataFrame:
         ]
         df = pd.DataFrame(records).sort_values("date", ascending=True).reset_index(drop=True)
         logger.info(f"[{symbol}] Fetched {len(df)} days from Alpha Vantage")
+        _data_cache[symbol] = (time.time(), df)
         return df
 
     except Exception as e:

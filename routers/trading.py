@@ -115,3 +115,8 @@ def start_backtest(background_tasks: BackgroundTasks, days: int = 365, buy_thres
 @router.get("/backtest/result")
 def get_backtest_result():
     return _backtest_result
+
+@router.post("/backtest/clear-cache")
+def clear_cache():
+    bt._data_cache.clear()
+    return {"status": "ok", "message": "Data cache cleared — next backtest will re-fetch from Alpha Vantage"}
