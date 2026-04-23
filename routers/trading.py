@@ -74,15 +74,23 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import yfinance as yf
+    import requests, os
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "T50H37RBFKT509FY")
     try:
-        ticker = yf.Ticker("RELIANCE.BO")
-        df = ticker.history(period="3mo")
-        if df.empty:
-            return {"status": "failed", "message": "yfinance returned empty data for RELIANCE.BO"}
-        sample = df.iloc[-1][["Open", "High", "Low", "Close", "Volume"]].to_dict()
-        sample = {k: round(float(v), 2) for k, v in sample.items()}
-        return {"status": "ok", "source": "yfinance/Yahoo Finance", "rows": len(df), "sample": sample}
+        params = {
+            "function": "TIME_SERIES_DAILY", "symbol": "RELIANCE.BSE",
+            "outputsize": "compact", "apikey": api_key, "datatype": "json",
+        }
+        data = requests.get("https://www.alphavantage.co/query", params=params, timeout=30).json()
+        if "Error Message" in data:
+            return {"status": "failed", "message": data["Error Message"]}
+        if "Information" in data:
+            return {"status": "rate_limited", "message": data["Information"]}
+        ts = data.get("Time Series (Daily)", {})
+        if not ts:
+            return {"status": "failed", "message": "No time series data", "keys": list(data.keys())}
+        rows = list(ts.items())
+        return {"status": "ok", "source": "Alpha Vantage (compact)", "rows": len(rows), "latest_date": rows[0][0], "sample": rows[0][1]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

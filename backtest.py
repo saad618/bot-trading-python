@@ -1,6 +1,6 @@
 import time
 import logging
-import yfinance as yf
+import requests
 import numpy as np
 import pandas as pd
 from config import settings
@@ -10,29 +10,47 @@ from strategies import composite
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Data fetching — yfinance (free, BSE: .BO suffix)
+# Data fetching — Alpha Vantage compact (100 bars, free tier)
 # ─────────────────────────────────────────────────────────────
-
-def _to_yf_symbol(symbol: str) -> str:
-    # RELIANCE.BSE → RELIANCE.BO  |  RELIANCE.NSE → RELIANCE.NS
-    return symbol.replace(".BSE", ".BO").replace(".NSE", ".NS")
 
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
     try:
-        yf_sym = _to_yf_symbol(symbol)
-        logger.info(f"[{symbol}] Fetching from yfinance ({yf_sym})...")
-        ticker = yf.Ticker(yf_sym)
-        raw = ticker.history(period="2y")
+        logger.info(f"[{symbol}] Fetching from Alpha Vantage (compact)...")
+        params = {
+            "function":   "TIME_SERIES_DAILY",
+            "symbol":     symbol,
+            "outputsize": "compact",
+            "apikey":     settings.API_KEY,
+            "datatype":   "json",
+        }
+        r = requests.get(settings.API_BASE_URL, params=params, timeout=30)
+        data = r.json()
 
-        if raw.empty:
-            logger.warning(f"[{symbol}] yfinance returned empty data")
+        if "Error Message" in data:
+            logger.warning(f"[{symbol}] Alpha Vantage error: {data['Error Message']}")
+            return pd.DataFrame()
+        if "Information" in data:
+            logger.warning(f"[{symbol}] Alpha Vantage rate limit: {data['Information']}")
             return pd.DataFrame()
 
-        df = raw.reset_index()[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
-        df.columns = ["date", "open", "high", "low", "close", "volume"]
-        df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
-        df = df.sort_values("date", ascending=True).reset_index(drop=True)
-        logger.info(f"[{symbol}] Fetched {len(df)} days from yfinance")
+        ts = data.get("Time Series (Daily)", {})
+        if not ts:
+            logger.warning(f"[{symbol}] No time series data returned")
+            return pd.DataFrame()
+
+        records = [
+            {
+                "date":   pd.to_datetime(date),
+                "open":   float(v["1. open"]),
+                "high":   float(v["2. high"]),
+                "low":    float(v["3. low"]),
+                "close":  float(v["4. close"]),
+                "volume": float(v["5. volume"]),
+            }
+            for date, v in ts.items()
+        ]
+        df = pd.DataFrame(records).sort_values("date", ascending=True).reset_index(drop=True)
+        logger.info(f"[{symbol}] Fetched {len(df)} days from Alpha Vantage")
         return df
 
     except Exception as e:
