@@ -74,20 +74,19 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import yfinance as yf
+    import requests, os
+    from config import settings
+    api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY)
     try:
-        ticker = "RELIANCE.BO"
-        stock = yf.Ticker(ticker)
-        df = stock.history(period="1mo")
-        if df.empty:
-            return {"status": "empty", "ticker": ticker}
-        return {
-            "status": "ok",
-            "ticker": ticker,
-            "rows": len(df),
-            "columns": list(df.columns),
-            "latest_close": float(df["Close"].iloc[-1])
-        }
+        params = {"function": "TIME_SERIES_DAILY", "symbol": "RELIANCE.BSE",
+                  "outputsize": "compact", "apikey": api_key}
+        r = requests.get(settings.API_BASE_URL, params=params, timeout=15)
+        data = r.json()
+        keys = list(data.keys())
+        if "Time Series (Daily)" in data:
+            rows = len(data["Time Series (Daily)"])
+            return {"status": "ok", "rows": rows, "api_key_used": api_key[:8] + "..."}
+        return {"status": "failed", "response_keys": keys, "message": str(data)[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
