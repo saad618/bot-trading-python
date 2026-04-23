@@ -12,6 +12,16 @@ router = APIRouter(prefix="/api")
 def get_status():
     return {"running": trading_svc.is_running()}
 
+@router.post("/trading/test-telegram")
+def test_telegram():
+    from services.telegram import send_message
+    send_message(
+        "✅ <b>Telegram connected!</b>\n"
+        "🤖 Trading Bot is live\n"
+        "📊 You will receive alerts for every trade"
+    )
+    return "Test message sent"
+
 @router.post("/trading/start")
 def start():
     trading_svc.start()
