@@ -14,42 +14,51 @@ logger = logging.getLogger(__name__)
 # Data fetching — Alpha Vantage with dedicated backtest key
 # ─────────────────────────────────────────────────────────────
 
+def _to_twelve_data_symbol(symbol: str) -> str:
+    # RELIANCE.BSE → RELIANCE:BSE
+    return symbol.replace(".", ":")
+
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
-    api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY).strip().lstrip("=").strip()
+    api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+    if not api_key:
+        logger.error("TWELVE_DATA_API_KEY not set in environment variables")
+        return pd.DataFrame()
     try:
-        time.sleep(2)  # respect 1 req/sec burst limit
-        logger.info(f"[{symbol}] Fetching full history from Alpha Vantage...")
+        time.sleep(2)
+        td_symbol = _to_twelve_data_symbol(symbol)
+        logger.info(f"[{symbol}] Fetching history from Twelve Data as {td_symbol}...")
         params = {
-            "function":   "TIME_SERIES_DAILY",
-            "symbol":     symbol,
-            "outputsize": "full",
-            "apikey":     api_key
+            "symbol":     td_symbol,
+            "interval":   "1day",
+            "outputsize": 5000,
+            "apikey":     api_key,
+            "format":     "JSON"
         }
-        r = requests.get(settings.API_BASE_URL, params=params, timeout=30)
+        r = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30)
         data = r.json()
 
-        if "Note" in data or "Information" in data:
-            logger.warning(f"[{symbol}] Rate limit hit: {list(data.keys())}")
+        if data.get("status") == "error":
+            logger.warning(f"[{symbol}] Twelve Data error: {data.get('message')}")
             return pd.DataFrame()
 
-        ts = data.get("Time Series (Daily)", {})
-        if not ts:
-            logger.warning(f"[{symbol}] No time series data. Keys: {list(data.keys())}")
+        values = data.get("values", [])
+        if not values:
+            logger.warning(f"[{symbol}] No data returned from Twelve Data")
             return pd.DataFrame()
 
         records = [
             {
-                "date":   pd.to_datetime(d),
-                "open":   float(v["1. open"]),
-                "high":   float(v["2. high"]),
-                "low":    float(v["3. low"]),
-                "close":  float(v["4. close"]),
-                "volume": float(v["5. volume"]),
+                "date":   pd.to_datetime(v["datetime"]),
+                "open":   float(v["open"]),
+                "high":   float(v["high"]),
+                "low":    float(v["low"]),
+                "close":  float(v["close"]),
+                "volume": float(v.get("volume", 0)),
             }
-            for d, v in ts.items()
+            for v in values
         ]
         df = pd.DataFrame(records).sort_values("date", ascending=True).reset_index(drop=True)
-        logger.info(f"[{symbol}] Fetched {len(df)} days")
+        logger.info(f"[{symbol}] Fetched {len(df)} days from Twelve Data")
         return df
 
     except Exception as e:

@@ -75,16 +75,19 @@ _backtest_result = {"status": "idle", "result": None}
 @router.get("/backtest/test-fetch")
 def test_fetch():
     import requests, os, time
-    from config import settings
-    api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY).strip().lstrip("=").strip()
+    api_key = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+    if not api_key:
+        return {"status": "error", "message": "TWELVE_DATA_API_KEY not set in Railway Variables"}
     try:
         time.sleep(2)
-        params = {"function": "TIME_SERIES_DAILY", "symbol": "RELIANCE.BSE",
-                  "outputsize": "full", "apikey": api_key}
-        data = requests.get(settings.API_BASE_URL, params=params, timeout=30).json()
-        if "Time Series (Daily)" in data:
-            return {"status": "ok", "rows": len(data["Time Series (Daily)"]), "api_key": api_key[:8] + "..."}
-        return {"status": "failed", "message": str(data)[:300]}
+        params = {"symbol": "RELIANCE:BSE", "interval": "1day",
+                  "outputsize": 30, "apikey": api_key, "format": "JSON"}
+        data = requests.get("https://api.twelvedata.com/time_series", params=params, timeout=30).json()
+        if data.get("status") == "error":
+            return {"status": "failed", "message": data.get("message")}
+        values = data.get("values", [])
+        return {"status": "ok", "rows": len(values),
+                "sample": values[0] if values else None}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
