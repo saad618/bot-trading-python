@@ -8,6 +8,7 @@ from services import atr as atr_service
 from services import risk_manager
 from services.portfolio import portfolio_service
 from strategies import composite
+from services import telegram
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def execute_trading_cycle(db: Session):
 
     if _daily_limit_breached(db):
         logger.warning("=== CIRCUIT BREAKER: Daily loss limit reached. No new trades. ===")
+        telegram.notify_circuit_breaker(get_today_pnl(db))
         return
 
     logger.info(f"=== Cycle Started | Cash: ₹{portfolio_service.get_cash_balance():.2f} ===")
@@ -88,10 +90,14 @@ def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
             db.commit()
 
         if price <= pos.stop_loss_price:
+            loss = (price - pos.entry_price) * pos.quantity
             logger.warning(f"[{symbol}] STOP-LOSS hit @ ₹{price:.2f}")
+            telegram.notify_stop_loss(symbol, price, abs(loss))
             _close_position(pos, price, PositionStatus.CLOSED_STOP_LOSS, db)
         elif price >= pos.target_price:
+            profit = (price - pos.entry_price) * pos.quantity
             logger.info(f"[{symbol}] TARGET hit @ ₹{price:.2f}")
+            telegram.notify_target(symbol, price, profit)
             _close_position(pos, price, PositionStatus.CLOSED_TARGET, db)
 
 def _execute_buy(symbol: str, price: float, atr: float, db: Session):
@@ -114,6 +120,7 @@ def _execute_buy(symbol: str, price: float, atr: float, db: Session):
     db.commit()
     portfolio_service.apply_trade("BUY", symbol, qty, price)
     logger.info(f"[{symbol}] BUY {qty} @ ₹{price:.2f} | SL:₹{stop_loss:.2f} | Target:₹{target:.2f}")
+    telegram.notify_buy(symbol, price, stop_loss, target, qty)
 
 def _close_by_signal(symbol: str, price: float, db: Session):
     positions = db.query(OpenPosition).filter(
@@ -133,6 +140,8 @@ def _close_position(pos: OpenPosition, price: float, reason: PositionStatus, db:
     db.commit()
     portfolio_service.apply_trade("SELL", pos.symbol, pos.quantity, price)
     logger.info(f"[{pos.symbol}] SELL {pos.quantity} @ ₹{price:.2f} | P&L:{'+' if pnl >= 0 else ''}₹{pnl:.2f} | {reason.value}")
+    if reason == PositionStatus.CLOSED_SIGNAL:
+        telegram.notify_sell(pos.symbol, price, pnl, "Signal")
 
 def _daily_limit_breached(db: Session) -> bool:
     max_loss = settings.INITIAL_BALANCE * (settings.MAX_DAILY_LOSS_PERCENT / 100.0)
