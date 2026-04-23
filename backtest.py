@@ -1,9 +1,8 @@
 import time
 import logging
-import requests
+import yfinance as yf
 import numpy as np
 import pandas as pd
-from io import StringIO
 from config import settings
 from services import atr as atr_svc, risk_manager
 from strategies import composite
@@ -11,38 +10,29 @@ from strategies import composite
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Data fetching — Stooq (free, no API key required)
+# Data fetching — yfinance (free, BSE: .BO suffix)
 # ─────────────────────────────────────────────────────────────
 
-def _to_stooq_symbol(symbol: str) -> str:
-    # RELIANCE.BSE → reliance.bo  |  RELIANCE.NSE → reliance.ns
-    return symbol.replace(".BSE", ".BO").replace(".NSE", ".NS").lower()
+def _to_yf_symbol(symbol: str) -> str:
+    # RELIANCE.BSE → RELIANCE.BO  |  RELIANCE.NSE → RELIANCE.NS
+    return symbol.replace(".BSE", ".BO").replace(".NSE", ".NS")
 
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
     try:
-        stooq_sym = _to_stooq_symbol(symbol)
-        end   = pd.Timestamp.today().strftime("%Y%m%d")
-        start = (pd.Timestamp.today() - pd.Timedelta(days=800)).strftime("%Y%m%d")
-        url   = f"https://stooq.com/q/d/l/?s={stooq_sym}&d1={start}&d2={end}&i=d"
-        logger.info(f"[{symbol}] Fetching from Stooq ({stooq_sym})...")
+        yf_sym = _to_yf_symbol(symbol)
+        logger.info(f"[{symbol}] Fetching from yfinance ({yf_sym})...")
+        ticker = yf.Ticker(yf_sym)
+        raw = ticker.history(period="2y")
 
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        r = requests.get(url, headers=headers, timeout=30)
-
-        if r.status_code != 200:
-            logger.warning(f"[{symbol}] Stooq HTTP {r.status_code}")
+        if raw.empty:
+            logger.warning(f"[{symbol}] yfinance returned empty data")
             return pd.DataFrame()
 
-        text = r.text.strip()
-        if not text or "No data" in text or len(text.splitlines()) < 3:
-            logger.warning(f"[{symbol}] Stooq returned no data")
-            return pd.DataFrame()
-
-        df = pd.read_csv(StringIO(text))
-        df.columns = [c.lower() for c in df.columns]
-        df["date"] = pd.to_datetime(df["date"])
+        df = raw.reset_index()[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
+        df.columns = ["date", "open", "high", "low", "close", "volume"]
+        df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
         df = df.sort_values("date", ascending=True).reset_index(drop=True)
-        logger.info(f"[{symbol}] Fetched {len(df)} days from Stooq")
+        logger.info(f"[{symbol}] Fetched {len(df)} days from yfinance")
         return df
 
     except Exception as e:

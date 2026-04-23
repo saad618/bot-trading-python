@@ -74,20 +74,15 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import requests, pandas as pd
-    from io import StringIO
+    import yfinance as yf
     try:
-        end   = pd.Timestamp.today().strftime("%Y%m%d")
-        start = (pd.Timestamp.today() - pd.Timedelta(days=60)).strftime("%Y%m%d")
-        url   = f"https://stooq.com/q/d/l/?s=reliance.bo&d1={start}&d2={end}&i=d"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        r = requests.get(url, headers=headers, timeout=30)
-        text = r.text.strip()
-        if r.status_code != 200:
-            return {"status": "failed", "http": r.status_code, "body": text[:500]}
-        # Return raw text so we can see exactly what Stooq sends
-        lines = text.splitlines()
-        return {"status": "raw", "http": r.status_code, "line_count": len(lines), "first_5_lines": lines[:5], "last_3_lines": lines[-3:]}
+        ticker = yf.Ticker("RELIANCE.BO")
+        df = ticker.history(period="3mo")
+        if df.empty:
+            return {"status": "failed", "message": "yfinance returned empty data for RELIANCE.BO"}
+        sample = df.iloc[-1][["Open", "High", "Low", "Close", "Volume"]].to_dict()
+        sample = {k: round(float(v), 2) for k, v in sample.items()}
+        return {"status": "ok", "source": "yfinance/Yahoo Finance", "rows": len(df), "sample": sample}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
