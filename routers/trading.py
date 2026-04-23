@@ -29,7 +29,7 @@ def execute_now():
 
 @router.post("/trading/report")
 def send_report():
-    threading.Thread(target=sched.send_daily_report, daemon=True).start()
+    sched.send_daily_report()
     return "Daily report email triggered"
 
 @router.get("/trades")
