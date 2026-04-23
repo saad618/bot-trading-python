@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 def _fetch_full_history(symbol: str) -> pd.DataFrame:
     api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY).strip().lstrip("=").strip()
     try:
+        time.sleep(2)  # respect 1 req/sec burst limit
         logger.info(f"[{symbol}] Fetching full history from Alpha Vantage...")
         params = {
             "function":   "TIME_SERIES_DAILY",

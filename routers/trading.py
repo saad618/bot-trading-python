@@ -74,30 +74,19 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import requests, os
+    import requests, os, time
     from config import settings
-    api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY)
-    api_key = api_key.strip().lstrip("=").strip()
-    results = {}
-    # Test compact
+    api_key = os.getenv("BACKTEST_API_KEY", settings.API_KEY).strip().lstrip("=").strip()
     try:
+        time.sleep(2)
         params = {"function": "TIME_SERIES_DAILY", "symbol": "RELIANCE.BSE",
-                  "outputsize": "compact", "apikey": api_key}
-        data = requests.get(settings.API_BASE_URL, params=params, timeout=15).json()
-        results["compact"] = {"rows": len(data.get("Time Series (Daily)", {})),
-                               "keys": list(data.keys())}
-    except Exception as e:
-        results["compact"] = {"error": str(e)}
-    # Test full
-    try:
-        params["outputsize"] = "full"
+                  "outputsize": "full", "apikey": api_key}
         data = requests.get(settings.API_BASE_URL, params=params, timeout=30).json()
-        results["full"] = {"rows": len(data.get("Time Series (Daily)", {})),
-                           "keys": list(data.keys()),
-                           "message": str(data.get("Note", data.get("Information", "ok")))}
+        if "Time Series (Daily)" in data:
+            return {"status": "ok", "rows": len(data["Time Series (Daily)"]), "api_key": api_key[:8] + "..."}
+        return {"status": "failed", "message": str(data)[:300]}
     except Exception as e:
-        results["full"] = {"error": str(e)}
-    return {"api_key": api_key[:8] + "...", "results": results}
+        return {"status": "error", "error": str(e)}
 
 @router.post("/backtest")
 def start_backtest(background_tasks: BackgroundTasks, days: int = 365):
