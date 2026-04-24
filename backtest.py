@@ -161,7 +161,7 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
 
             if in_uptrend:
                 buy_opportunities += 1
-                qty = risk_manager.calculate_quantity(cash, price)
+                qty = risk_manager.calculate_quantity(cash, price, result.score)
                 if qty > 0 and cash >= qty * price:
                     cash -= qty * price
                     position = {
@@ -176,12 +176,14 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
                     buy_failed_qty += 1
 
         elif result.score <= sell_thr and position:
-            pnl = (price - position["entry"]) * position["qty"]
-            cash += position["qty"] * price
-            trades.append({"date": str(today["date"].date()), "type": "SELL",
-                            "price": round(price, 2), "qty": position["qty"],
-                            "pnl": round(pnl, 2), "reason": "SIGNAL"})
-            position = None
+            if price > position["entry"]:  # only signal-exit profitable positions
+                pnl = (price - position["entry"]) * position["qty"]
+                cash += position["qty"] * price
+                trades.append({"date": str(today["date"].date()), "type": "SELL",
+                                "price": round(price, 2), "qty": position["qty"],
+                                "pnl": round(pnl, 2), "reason": "SIGNAL"})
+                position = None
+            # else: let stop-loss handle the exit
 
     # Close open position at end of period
     if position:
@@ -284,11 +286,33 @@ def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int
             logger.warning(f"[{symbol}] Skipped — insufficient history ({len(df)} bars)")
             continue
 
-        results.append(_simulate(symbol, df, capital_each, buy_threshold, sell_threshold))
+        full_result = _simulate(symbol, df, capital_each, buy_threshold, sell_threshold)
 
-    # Portfolio summary
+        # Walk-forward: re-simulate on last 30% of bars (out-of-sample test)
+        oos_start = int(len(df) * 0.7)
+        df_oos = df.iloc[oos_start:].reset_index(drop=True)
+        if len(df_oos) >= 70:
+            oos_result = _simulate(symbol, df_oos, capital_each, buy_threshold, sell_threshold)
+            full_result["oos_metrics"] = oos_result["metrics"]
+        else:
+            full_result["oos_metrics"] = {"note": "Insufficient data for OOS test"}
+
+        results.append(full_result)
+
+    # Portfolio summary (full period)
     all_pnl = [t["pnl"] for r in results for t in r["trades"] if t["type"] == "SELL"]
     wins     = [p for p in all_pnl if p > 0]
+
+    # OOS summary (honest out-of-sample view)
+    oos_pnl  = [t["pnl"] for r in results
+                for t in r.get("oos_metrics", {}).get("total_pnl", [])
+                if isinstance(r.get("oos_metrics"), dict) and "total_pnl" in r["oos_metrics"]]
+    oos_total = sum(r["oos_metrics"]["total_pnl"] for r in results
+                    if isinstance(r.get("oos_metrics"), dict) and "total_pnl" in r["oos_metrics"])
+    oos_trades = sum(r["oos_metrics"].get("total_trades", 0) for r in results
+                     if isinstance(r.get("oos_metrics"), dict))
+    oos_wins   = sum(r["oos_metrics"].get("winning_trades", 0) for r in results
+                     if isinstance(r.get("oos_metrics"), dict))
 
     summary = {
         "period_days":       lookback_days,
@@ -299,6 +323,12 @@ def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int
         "total_return_pct":  round(sum(all_pnl) / settings.INITIAL_BALANCE * 100, 2),
         "initial_balance":   settings.INITIAL_BALANCE,
         "final_balance":     round(settings.INITIAL_BALANCE + sum(all_pnl), 2),
+        "oos_summary": {
+            "trades":   oos_trades,
+            "win_rate": round(oos_wins / oos_trades * 100, 1) if oos_trades else 0,
+            "total_pnl": round(oos_total, 2),
+            "note": "Last 30% of data — honest out-of-sample performance",
+        },
     }
 
     return {"summary": summary, "per_symbol": results}

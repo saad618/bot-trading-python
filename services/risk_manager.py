@@ -1,9 +1,23 @@
 from config import settings
 
-def calculate_quantity(cash: float, price: float) -> int:
+def calculate_quantity(cash: float, price: float, score: int = None) -> float:
+    """
+    Returns fractional quantity (supports crypto).
+    When score is provided, position size scales linearly from
+    POSITION_SIZE_MIN_PCT (at buy threshold) to POSITION_SIZE_MAX_PCT (at max score 13).
+    """
     if price <= 0:
-        return 0
-    return max(1, int(cash * (settings.POSITION_SIZE_PERCENT / 100.0) / price))
+        return 0.0
+    if score is not None:
+        min_pct = settings.POSITION_SIZE_MIN_PCT / 100.0
+        max_pct = settings.POSITION_SIZE_MAX_PCT / 100.0
+        thr     = settings.BUY_SCORE_THRESHOLD
+        pct = min_pct + (max_pct - min_pct) * (score - thr) / max(1, 13 - thr)
+        pct = max(min_pct, min(max_pct, pct))
+    else:
+        pct = settings.POSITION_SIZE_PERCENT / 100.0
+    qty = cash * pct / price
+    return round(qty, 6) if qty >= 0.0001 else 0.0
 
 def calculate_stop_loss(entry: float, atr: float) -> float:
     if atr > 0:

@@ -13,10 +13,10 @@ class PortfolioService:
     def get_holdings(self) -> dict:
         return dict(self._holdings)
 
-    def can_buy(self, qty: int, price: float) -> bool:
+    def can_buy(self, qty: float, price: float) -> bool:
         return self._cash >= qty * price
 
-    def apply_trade(self, trade_type: str, symbol: str, qty: int, price: float):
+    def apply_trade(self, trade_type: str, symbol: str, qty: float, price: float):
         with self._lock:
             if trade_type == "BUY":
                 self._cash -= qty * price

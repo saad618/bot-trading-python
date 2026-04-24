@@ -38,18 +38,19 @@ def execute_trading_cycle(db: Session):
         telegram.notify_circuit_breaker(get_today_pnl(db))
         return
 
-    logger.info(f"=== Cycle Started | Cash: ₹{portfolio_service.get_cash_balance():.2f} ===")
+    cash = portfolio_service.get_cash_balance()
+    logger.info(f"=== Cycle Started | Cash: ${cash:.2f} ===")
 
     for i, symbol in enumerate(settings.SYMBOLS):
         try:
             _process_symbol(symbol, db)
-            if i < len(settings.SYMBOLS) - 1:
-                time.sleep(13)
+            if i < len(settings.SYMBOLS) - 1 and settings.DATA_SOURCE == "stocks":
+                time.sleep(13)  # Alpha Vantage rate limit only
         except Exception as e:
             logger.error(f"[{symbol}] Error: {e}")
 
     open_count = db.query(OpenPosition).filter(OpenPosition.status == PositionStatus.OPEN).count()
-    logger.info(f"=== Cycle Done | Cash: ₹{portfolio_service.get_cash_balance():.2f} | Open: {open_count} | Today P&L: ₹{get_today_pnl(db):.2f} ===")
+    logger.info(f"=== Cycle Done | Cash: ${portfolio_service.get_cash_balance():.2f} | Open: {open_count} | Today P&L: ${get_today_pnl(db):.2f} ===")
 
 def _get_prices(symbol: str):
     if settings.DATA_SOURCE == "crypto":
@@ -68,7 +69,7 @@ def _process_symbol(symbol: str, db: Session):
 
     result = composite.evaluate(df)
     breakdown = "  ".join(f"{k}:{'+' if v >= 0 else ''}{v}" for k, v in result.breakdown.items())
-    logger.info(f"[{symbol}] ₹{current_price:.2f} | {breakdown} | Score:{result.score} | {result.signal} | ATR:{atr:.2f}")
+    logger.info(f"[{symbol}] ${current_price:.4f} | {breakdown} | Score:{result.score} | {result.signal} | ATR:{atr:.4f}")
 
     has_open = db.query(OpenPosition).filter(
         OpenPosition.symbol == symbol,
@@ -76,12 +77,17 @@ def _process_symbol(symbol: str, db: Session):
     ).first() is not None
 
     if result.signal == "BUY" and not has_open:
-        if not _is_uptrend(df):
-            logger.info(f"[{symbol}] BUY signal blocked — price below 50-EMA (downtrend)")
+        total_open = db.query(OpenPosition).filter(OpenPosition.status == PositionStatus.OPEN).count()
+        if total_open >= settings.MAX_OPEN_POSITIONS:
+            logger.info(f"[{symbol}] BUY blocked — max {settings.MAX_OPEN_POSITIONS} positions already open")
+        elif not _is_uptrend(df):
+            logger.info(f"[{symbol}] BUY blocked — price below 50-EMA (downtrend)")
         elif risk_manager.is_high_volatility(current_price, atr, settings.MAX_ATR_PERCENT):
-            logger.info(f"[{symbol}] BUY signal blocked — ATR {atr:.2f} = {atr/current_price*100:.1f}% of price (too volatile)")
+            logger.info(f"[{symbol}] BUY blocked — ATR {atr:.4f} = {atr/current_price*100:.1f}% of price (too volatile)")
+        elif _is_low_liquidity_hour():
+            logger.info(f"[{symbol}] BUY blocked — low liquidity window (01-05 UTC weekend)")
         else:
-            _execute_buy(symbol, current_price, atr, db)
+            _execute_buy(symbol, current_price, atr, result.score, db)
     elif result.signal == "SELL" and has_open:
         _close_by_signal(symbol, current_price, db)
     else:
@@ -90,12 +96,19 @@ def _process_symbol(symbol: str, db: Session):
 def _is_uptrend(df) -> bool:
     if len(df) < 50:
         return True
-    prices = df["close"].values[::-1][:50]  # oldest → newest
+    prices = df["close"].values[::-1][:50]
     k = 2.0 / 51
     ema = float(prices[0])
     for p in prices[1:]:
         ema = float(p) * k + ema * (1 - k)
     return float(df.iloc[0]["close"]) > ema
+
+def _is_low_liquidity_hour() -> bool:
+    """Block new buys 01:00-05:00 UTC on weekends — thin crypto order books."""
+    if settings.DATA_SOURCE != "crypto":
+        return False
+    now = datetime.utcnow()
+    return now.weekday() >= 5 and 1 <= now.hour < 5
 
 def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
     positions = db.query(OpenPosition).filter(
@@ -107,38 +120,38 @@ def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
         # Breakeven: once price reaches halfway to target, move stop to entry
         halfway = pos.entry_price + (pos.target_price - pos.entry_price) * 0.5
         if price >= halfway and pos.stop_loss_price < pos.entry_price:
-            logger.info(f"[{symbol}] BREAKEVEN activated — stop raised to entry ₹{pos.entry_price:.2f}")
+            logger.info(f"[{symbol}] BREAKEVEN activated — stop raised to entry ${pos.entry_price:.4f}")
             pos.stop_loss_price = pos.entry_price
             db.commit()
 
         # Trailing stop (only raises, never lowers)
         new_stop = risk_manager.calculate_trailing_stop(price, pos.stop_loss_price, atr)
         if new_stop > pos.stop_loss_price:
-            logger.info(f"[{symbol}] Trailing stop: ₹{pos.stop_loss_price:.2f} → ₹{new_stop:.2f}")
+            logger.info(f"[{symbol}] Trailing stop: ${pos.stop_loss_price:.4f} → ${new_stop:.4f}")
             pos.stop_loss_price = new_stop
             db.commit()
 
         if price <= pos.stop_loss_price:
             loss = (price - pos.entry_price) * pos.quantity
-            logger.warning(f"[{symbol}] STOP-LOSS hit @ ₹{price:.2f}")
+            logger.warning(f"[{symbol}] STOP-LOSS hit @ ${price:.4f}")
             telegram.notify_stop_loss(symbol, price, abs(loss))
             _close_position(pos, price, PositionStatus.CLOSED_STOP_LOSS, db)
         elif price >= pos.target_price:
             profit = (price - pos.entry_price) * pos.quantity
-            logger.info(f"[{symbol}] TARGET hit @ ₹{price:.2f}")
+            logger.info(f"[{symbol}] TARGET hit @ ${price:.4f}")
             telegram.notify_target(symbol, price, profit)
             _close_position(pos, price, PositionStatus.CLOSED_TARGET, db)
 
-def _execute_buy(symbol: str, price: float, atr: float, db: Session):
+def _execute_buy(symbol: str, price: float, atr: float, score: int, db: Session):
     cash = portfolio_service.get_cash_balance()
-    qty = risk_manager.calculate_quantity(cash, price)
+    qty = risk_manager.calculate_quantity(cash, price, score)
 
-    if not portfolio_service.can_buy(qty, price):
-        logger.warning(f"[{symbol}] Insufficient cash")
+    if qty <= 0 or not portfolio_service.can_buy(qty, price):
+        logger.warning(f"[{symbol}] Insufficient cash or quantity too small")
         return
 
     stop_loss = risk_manager.calculate_stop_loss(price, atr)
-    target = risk_manager.calculate_target(price, atr)
+    target    = risk_manager.calculate_target(price, atr)
     mode = "PAPER TRADE" if settings.PAPER_TRADING else "LIVE TRADE"
 
     db.add(Trade(symbol=symbol, type=TradeType.BUY, quantity=qty, price=price,
@@ -148,7 +161,7 @@ def _execute_buy(symbol: str, price: float, atr: float, db: Session):
                         status=PositionStatus.OPEN))
     db.commit()
     portfolio_service.apply_trade("BUY", symbol, qty, price)
-    logger.info(f"[{symbol}] BUY {qty} @ ₹{price:.2f} | SL:₹{stop_loss:.2f} | Target:₹{target:.2f}")
+    logger.info(f"[{symbol}] BUY {qty:.6f} @ ${price:.4f} | SL:${stop_loss:.4f} | Target:${target:.4f} | Score:{score}")
     telegram.notify_buy(symbol, price, stop_loss, target, qty)
 
 def _close_by_signal(symbol: str, price: float, db: Session):
@@ -156,10 +169,13 @@ def _close_by_signal(symbol: str, price: float, db: Session):
         OpenPosition.symbol == symbol, OpenPosition.status == PositionStatus.OPEN
     ).all()
     for pos in positions:
-        _close_position(pos, price, PositionStatus.CLOSED_SIGNAL, db)
+        if price > pos.entry_price:
+            _close_position(pos, price, PositionStatus.CLOSED_SIGNAL, db)
+        else:
+            logger.info(f"[{symbol}] SELL signal skipped — position at loss (${price:.4f} < entry ${pos.entry_price:.4f}), stop-loss will handle it")
 
 def _close_position(pos: OpenPosition, price: float, reason: PositionStatus, db: Session):
-    pnl = (price - pos.entry_price) * pos.quantity
+    pnl  = (price - pos.entry_price) * pos.quantity
     mode = "PAPER TRADE" if settings.PAPER_TRADING else "LIVE TRADE"
 
     db.add(Trade(symbol=pos.symbol, type=TradeType.SELL, quantity=pos.quantity,
@@ -168,7 +184,7 @@ def _close_position(pos: OpenPosition, price: float, reason: PositionStatus, db:
     pos.status = reason
     db.commit()
     portfolio_service.apply_trade("SELL", pos.symbol, pos.quantity, price)
-    logger.info(f"[{pos.symbol}] SELL {pos.quantity} @ ₹{price:.2f} | P&L:{'+' if pnl >= 0 else ''}₹{pnl:.2f} | {reason.value}")
+    logger.info(f"[{pos.symbol}] SELL {pos.quantity:.6f} @ ${price:.4f} | P&L:{'+' if pnl >= 0 else ''}${pnl:.2f} | {reason.value}")
     if reason == PositionStatus.CLOSED_SIGNAL:
         telegram.notify_sell(pos.symbol, price, pnl, "Signal")
 

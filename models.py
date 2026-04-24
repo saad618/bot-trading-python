@@ -18,7 +18,7 @@ class Trade(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(50), nullable=False)
     type = Column(SQLEnum(TradeType), nullable=False)
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=False)
     total_value = Column(Float, nullable=False)
     realized_pnl = Column(Float, default=0.0)
@@ -29,7 +29,7 @@ class OpenPosition(Base):
     __tablename__ = "open_positions"
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(50), nullable=False)
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Float, nullable=False)
     entry_price = Column(Float, nullable=False)
     stop_loss_price = Column(Float, nullable=False)
     target_price = Column(Float, nullable=False)
