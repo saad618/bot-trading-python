@@ -192,7 +192,9 @@ def get_compare_result():
 @router.post("/backtest/clear-cache")
 def clear_cache():
     bt._data_cache.clear()
-    return {"status": "ok", "message": "Data cache cleared — next backtest will re-fetch from Alpha Vantage"}
+    from services import binance as binance_svc
+    binance_svc._cache.clear()
+    return {"status": "ok", "message": "All caches cleared — next backtest will re-fetch fresh data"}
 
 @router.get("/signals")
 def get_live_signals():
@@ -302,7 +304,9 @@ def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730):
 
     def _run():
         try:
-            bt._data_cache.clear()  # force fresh 2-year fetch
+            bt._data_cache.clear()
+            from services import binance as binance_svc
+            binance_svc._cache.clear()  # force fresh 2-year fetch
             result = bt.run(lookback_days=days)
             samples = []
             for sym_result in result.get("per_symbol", []):
