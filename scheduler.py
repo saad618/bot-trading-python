@@ -67,15 +67,15 @@ def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
             if t.type.value == "SELL":
                 pnl_color = "#27ae60" if t.realized_pnl >= 0 else "#e74c3c"
                 pnl_sign = "+" if t.realized_pnl >= 0 else ""
-                pnl_cell = f"<td style='color:{pnl_color};font-weight:bold;'>{pnl_sign}Rs{t.realized_pnl:.2f}</td>"
+                pnl_cell = f"<td style='color:{pnl_color};font-weight:bold;'>{pnl_sign}${t.realized_pnl:.2f}</td>"
             else:
                 pnl_cell = "<td style='color:#888;'>-</td>"
             trades_html += f"""
             <tr style='border-bottom:1px solid #eee;'>
-                <td style='padding:10px;font-weight:bold;'>{t.symbol.replace('.BSE','')}</td>
+                <td style='padding:10px;font-weight:bold;'>{t.symbol}</td>
                 <td style='padding:10px;'><span style='background:{type_color};color:white;padding:3px 8px;border-radius:4px;font-size:12px;'>{t.type.value}</span></td>
                 <td style='padding:10px;'>{t.quantity}</td>
-                <td style='padding:10px;'>₹{t.price:.2f}</td>
+                <td style='padding:10px;'>${t.price:.2f}</td>
                 {pnl_cell}
                 <td style='padding:10px;color:#888;font-size:12px;'>{t.executed_at.strftime('%H:%M:%S')}</td>
             </tr>"""
@@ -86,11 +86,11 @@ def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
         pos_html = "<table style='width:100%;border-collapse:collapse;'><tr style='background:#f8f9fa;'><th style='padding:8px;text-align:left;'>Symbol</th><th>Qty</th><th>Entry</th><th>Stop-Loss</th><th>Target</th></tr>"
         for p in open_positions:
             pos_html += f"""<tr style='border-bottom:1px solid #eee;'>
-                <td style='padding:8px;font-weight:bold;'>{p.symbol.replace('.BSE','')}</td>
+                <td style='padding:8px;font-weight:bold;'>{p.symbol}</td>
                 <td style='padding:8px;text-align:center;'>{p.quantity}</td>
-                <td style='padding:8px;text-align:center;'>₹{p.entry_price:.2f}</td>
-                <td style='padding:8px;text-align:center;color:#e74c3c;'>₹{p.stop_loss_price:.2f}</td>
-                <td style='padding:8px;text-align:center;color:#27ae60;'>₹{p.target_price:.2f}</td>
+                <td style='padding:8px;text-align:center;'>${p.entry_price:.2f}</td>
+                <td style='padding:8px;text-align:center;color:#e74c3c;'>${p.stop_loss_price:.2f}</td>
+                <td style='padding:8px;text-align:center;color:#27ae60;'>${p.target_price:.2f}</td>
             </tr>"""
         pos_html += "</table>"
 
@@ -101,15 +101,15 @@ def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
       </div>
       <div style="display:flex;gap:12px;padding:20px;background:white;">
         <div style="flex:1;background:#f8f9fa;padding:15px;border-radius:8px;text-align:center;border-left:4px solid {pnl_color};">
-          <div style="font-size:22px;font-weight:bold;color:{pnl_color};">{'+' if today_pnl >= 0 else ''}₹{today_pnl:.2f}</div>
+          <div style="font-size:22px;font-weight:bold;color:{pnl_color};">{'+' if today_pnl >= 0 else ''}${today_pnl:.2f}</div>
           <div style="color:#888;font-size:13px;margin-top:4px;">Today's P&L</div>
         </div>
         <div style="flex:1;background:#f8f9fa;padding:15px;border-radius:8px;text-align:center;border-left:4px solid {total_color};">
-          <div style="font-size:22px;font-weight:bold;color:{total_color};">{'+' if total_pnl >= 0 else ''}₹{total_pnl:.2f}</div>
+          <div style="font-size:22px;font-weight:bold;color:{total_color};">{'+' if total_pnl >= 0 else ''}${total_pnl:.2f}</div>
           <div style="color:#888;font-size:13px;margin-top:4px;">Total P&L</div>
         </div>
         <div style="flex:1;background:#f8f9fa;padding:15px;border-radius:8px;text-align:center;border-left:4px solid #3498db;">
-          <div style="font-size:22px;font-weight:bold;color:#2c3e50;">₹{cash:.2f}</div>
+          <div style="font-size:22px;font-weight:bold;color:#2c3e50;">${cash:.2f}</div>
           <div style="color:#888;font-size:13px;margin-top:4px;">Cash Balance</div>
         </div>
         <div style="flex:1;background:#f8f9fa;padding:15px;border-radius:8px;text-align:center;border-left:4px solid #9b59b6;">
