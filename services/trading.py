@@ -70,11 +70,24 @@ def _process_symbol(symbol: str, db: Session):
     ).first() is not None
 
     if result.signal == "BUY" and not has_open:
-        _execute_buy(symbol, current_price, atr, db)
+        if _is_uptrend(df):
+            _execute_buy(symbol, current_price, atr, db)
+        else:
+            logger.info(f"[{symbol}] BUY signal blocked — price below 50-EMA (downtrend)")
     elif result.signal == "SELL" and has_open:
         _close_by_signal(symbol, current_price, db)
     else:
         logger.info(f"[{symbol}] HOLD")
+
+def _is_uptrend(df) -> bool:
+    if len(df) < 50:
+        return True
+    prices = df["close"].values[::-1][:50]  # oldest → newest
+    k = 2.0 / 51
+    ema = float(prices[0])
+    for p in prices[1:]:
+        ema = float(p) * k + ema * (1 - k)
+    return float(df.iloc[0]["close"]) > ema
 
 def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
     positions = db.query(OpenPosition).filter(
@@ -83,6 +96,14 @@ def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
     ).all()
 
     for pos in positions:
+        # Breakeven: once price reaches halfway to target, move stop to entry
+        halfway = pos.entry_price + (pos.target_price - pos.entry_price) * 0.5
+        if price >= halfway and pos.stop_loss_price < pos.entry_price:
+            logger.info(f"[{symbol}] BREAKEVEN activated — stop raised to entry ₹{pos.entry_price:.2f}")
+            pos.stop_loss_price = pos.entry_price
+            db.commit()
+
+        # Trailing stop (only raises, never lowers)
         new_stop = risk_manager.calculate_trailing_stop(price, pos.stop_loss_price, atr)
         if new_stop > pos.stop_loss_price:
             logger.info(f"[{symbol}] Trailing stop: ₹{pos.stop_loss_price:.2f} → ₹{new_stop:.2f}")

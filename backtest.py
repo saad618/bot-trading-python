@@ -88,6 +88,11 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         atr = atr_svc.calculate(window)
 
         if position:
+            # Breakeven: once price reaches halfway to target, lock stop at entry
+            halfway = position["entry"] + (position["target"] - position["entry"]) * 0.5
+            if price >= halfway and position["stop"] < position["entry"]:
+                position["stop"] = position["entry"]
+
             # Raise trailing stop
             new_stop = risk_manager.calculate_trailing_stop(price, position["stop"], atr)
             if new_stop > position["stop"]:
@@ -125,20 +130,29 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         sell_thr = sell_threshold if sell_threshold is not None else settings.SELL_SCORE_THRESHOLD
 
         if result.score >= buy_thr and position is None:
-            buy_opportunities += 1
-            qty = risk_manager.calculate_quantity(cash, price)
-            if qty > 0 and cash >= qty * price:
-                cash -= qty * price
-                position = {
-                    "qty":    qty,
-                    "entry":  price,
-                    "stop":   risk_manager.calculate_stop_loss(price, atr),
-                    "target": risk_manager.calculate_target(price, atr),
-                }
-                trades.append({"date": str(today["date"].date()), "type": "BUY",
-                                "price": round(price, 2), "qty": qty, "pnl": 0, "reason": "SIGNAL"})
-            else:
-                buy_failed_qty += 1
+            # Market regime gate: only buy when price is above 50-EMA
+            prices_arr = window["close"].values[::-1][:50]
+            k50 = 2.0 / 51
+            ema50 = float(prices_arr[0])
+            for p in prices_arr[1:]:
+                ema50 = float(p) * k50 + ema50 * (1 - k50)
+            in_uptrend = float(price) > ema50
+
+            if in_uptrend:
+                buy_opportunities += 1
+                qty = risk_manager.calculate_quantity(cash, price)
+                if qty > 0 and cash >= qty * price:
+                    cash -= qty * price
+                    position = {
+                        "qty":    qty,
+                        "entry":  price,
+                        "stop":   risk_manager.calculate_stop_loss(price, atr),
+                        "target": risk_manager.calculate_target(price, atr),
+                    }
+                    trades.append({"date": str(today["date"].date()), "type": "BUY",
+                                    "price": round(price, 2), "qty": qty, "pnl": 0, "reason": "SIGNAL"})
+                else:
+                    buy_failed_qty += 1
 
         elif result.score <= sell_thr and position:
             pnl = (price - position["entry"]) * position["qty"]
