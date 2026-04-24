@@ -1,11 +1,11 @@
+import io
 import json
-import os
+import base64
 import logging
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = "ml_model.pkl"
 MIN_SAMPLES = 30
 
 _model = None
@@ -17,11 +17,13 @@ def _load():
     global _model, _feature_keys, _model_meta
     if _model is not None:
         return
-    if not os.path.exists(MODEL_PATH):
-        return
     try:
         import joblib
-        bundle = joblib.load(MODEL_PATH)
+        from database import get_setting
+        raw = get_setting("ml_model_pkl")
+        if not raw:
+            return
+        bundle = joblib.load(io.BytesIO(base64.b64decode(raw)))
         _model = bundle["model"]
         _feature_keys = bundle["feature_keys"]
         _model_meta = bundle.get("meta", {})
@@ -29,6 +31,16 @@ def _load():
                     f"win_rate={_model_meta.get('win_rate_pct', '?')}%")
     except Exception as e:
         logger.error(f"[ML] Failed to load model: {e}")
+
+
+def _save_model(bundle: dict):
+    """Serialize model to bytes and store in app_settings (survives Postgres redeploys)."""
+    import joblib
+    from database import set_setting
+    buf = io.BytesIO()
+    joblib.dump(bundle, buf)
+    encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+    set_setting("ml_model_pkl", encoded)
 
 
 def get_status() -> dict:
@@ -55,7 +67,7 @@ def predict(scores: dict) -> float | None:
 
 
 def retrain(db) -> dict:
-    """Pull all closed positions that have entry_scores, fit the classifier, save."""
+    """Pull all closed positions that have entry_scores, fit the classifier, save to DB."""
     from models import OpenPosition, PositionStatus
     import joblib
     from sklearn.ensemble import GradientBoostingClassifier
@@ -101,7 +113,6 @@ def retrain(db) -> dict:
 
     model.fit(X, y)
 
-    # Feature importance
     importance = {k: round(float(v), 4) for k, v in zip(keys, model.feature_importances_)}
     top_features = sorted(importance.items(), key=lambda x: -x[1])[:3]
 
@@ -113,7 +124,7 @@ def retrain(db) -> dict:
         "top_features": dict(top_features),
     }
 
-    joblib.dump({"model": model, "feature_keys": keys, "meta": meta}, MODEL_PATH)
+    _save_model({"model": model, "feature_keys": keys, "meta": meta})
 
     global _model, _feature_keys, _model_meta
     _model = model

@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, Float, String, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, Integer, Float, String, Text, DateTime, Enum as SQLEnum
 from database import Base
 
 class TradeType(str, enum.Enum):
@@ -41,4 +41,4 @@ class OpenPosition(Base):
 class AppSetting(Base):
     __tablename__ = "app_settings"
     key = Column(String(100), primary_key=True)
-    value = Column(String(1000), nullable=False)
+    value = Column(Text, nullable=False)  # Text = unlimited length (stores ML model blob)
