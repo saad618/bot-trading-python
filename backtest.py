@@ -78,6 +78,8 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
     max_score = -99
     min_score = 99
     score_samples = []
+    buy_opportunities = 0
+    buy_failed_qty = 0
 
     for i in range(WARMUP, len(df)):
         window = df.iloc[:i + 1].sort_values("date", ascending=False).reset_index(drop=True)
@@ -123,6 +125,7 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         sell_thr = sell_threshold if sell_threshold is not None else settings.SELL_SCORE_THRESHOLD
 
         if result.score >= buy_thr and position is None:
+            buy_opportunities += 1
             qty = risk_manager.calculate_quantity(cash, price)
             if qty > 0 and cash >= qty * price:
                 cash -= qty * price
@@ -134,6 +137,8 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
                 }
                 trades.append({"date": str(today["date"].date()), "type": "BUY",
                                 "price": round(price, 2), "qty": qty, "pnl": 0, "reason": "SIGNAL"})
+            else:
+                buy_failed_qty += 1
 
         elif result.score <= sell_thr and position:
             pnl = (price - position["entry"]) * position["qty"]
@@ -151,7 +156,15 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
                         "price": round(price, 2), "qty": position["qty"],
                         "pnl": round(pnl, 2), "reason": "END_OF_PERIOD"})
 
-    diagnostics = {"max_score": max_score, "min_score": min_score, "score_samples": score_samples}
+    diagnostics = {
+        "buy_thr_used": buy_thr,
+        "sell_thr_used": sell_thr,
+        "max_score": max_score,
+        "min_score": min_score,
+        "buy_opportunities": buy_opportunities,
+        "buy_failed_qty": buy_failed_qty,
+        "score_samples": score_samples,
+    }
     return {"symbol": symbol, "trades": trades, "metrics": _metrics(trades, capital), "diagnostics": diagnostics}
 
 # ─────────────────────────────────────────────────────────────
