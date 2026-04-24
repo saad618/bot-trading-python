@@ -23,6 +23,7 @@ def get_config():
         "target_pct": settings.TARGET_PERCENT,
         "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PERCENT,
         "buy_threshold": settings.BUY_SCORE_THRESHOLD,
+        "trend_filter": not settings.DISABLE_TREND_FILTER,
     }
 
 @router.post("/trading/test-telegram")
@@ -163,13 +164,17 @@ def get_live_signals():
             price  = float(df.iloc[0]["close"])
             atr    = float(atr_svc.calculate(df))
 
-            # 20-EMA uptrend check
-            prices = df["close"].values[::-1][:20]
-            k = 2.0 / 21
-            ema20 = float(prices[0])
-            for p in prices[1:]:
-                ema20 = float(p) * k + ema20 * (1 - k)
-            in_uptrend = price > ema20
+            # 20-EMA uptrend check (skipped if DISABLE_TREND_FILTER=true)
+            if settings.DISABLE_TREND_FILTER:
+                in_uptrend = True
+                ema20 = 0.0
+            else:
+                prices = df["close"].values[::-1][:20]
+                k = 2.0 / 21
+                ema20 = float(prices[0])
+                for p in prices[1:]:
+                    ema20 = float(p) * k + ema20 * (1 - k)
+                in_uptrend = price > ema20
 
             results.append({
                 "symbol":     symbol,

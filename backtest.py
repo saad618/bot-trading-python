@@ -151,13 +151,15 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         sell_thr = sell_threshold if sell_threshold is not None else settings.SELL_SCORE_THRESHOLD
 
         if result.score >= buy_thr and position is None:
-            # Market regime gate: only buy when price is above 20-EMA
-            prices_arr = window["close"].values[::-1][:20]
-            k20 = 2.0 / 21
-            ema20 = float(prices_arr[0])
-            for p in prices_arr[1:]:
-                ema20 = float(p) * k20 + ema20 * (1 - k20)
-            in_uptrend = float(price) > ema20
+            if settings.DISABLE_TREND_FILTER:
+                in_uptrend = True
+            else:
+                prices_arr = window["close"].values[::-1][:20]
+                k20 = 2.0 / 21
+                ema20 = float(prices_arr[0])
+                for p in prices_arr[1:]:
+                    ema20 = float(p) * k20 + ema20 * (1 - k20)
+                in_uptrend = float(price) > ema20
 
             if in_uptrend:
                 buy_opportunities += 1

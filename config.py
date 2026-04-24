@@ -38,6 +38,7 @@ class Settings:
     MAX_ATR_PERCENT       = float(os.getenv("MAX_ATR_PERCENT",       "8.0" if _crypto else "4.0"))
     INITIAL_BALANCE = float(os.getenv("INITIAL_BALANCE", "100000.0"))
     PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
+    DISABLE_TREND_FILTER = os.getenv("DISABLE_TREND_FILTER", "false").lower() == "true"
 
     MAIL_HOST = os.getenv("MAIL_HOST", "smtp.gmail.com")
     MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))

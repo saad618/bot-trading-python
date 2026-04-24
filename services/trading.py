@@ -100,6 +100,8 @@ def _process_symbol(symbol: str, db: Session):
         logger.info(f"[{symbol}] HOLD")
 
 def _is_uptrend(df) -> bool:
+    if settings.DISABLE_TREND_FILTER:
+        return True
     if len(df) < 20:
         return True
     prices = df["close"].values[::-1][:20]
