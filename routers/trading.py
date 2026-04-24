@@ -1,11 +1,15 @@
 import threading
 from fastapi import APIRouter, Depends, BackgroundTasks
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from services.portfolio import portfolio_service
 import services.trading as trading_svc
 import scheduler as sched
 import backtest as bt
+
+class SymbolBody(BaseModel):
+    symbol: str
 
 router = APIRouter(prefix="/api")
 
@@ -206,10 +210,10 @@ def get_symbols():
     return {"symbols": settings.SYMBOLS, "data_source": settings.DATA_SOURCE}
 
 @router.post("/symbols")
-def add_symbol(symbol: str):
+def add_symbol(req: SymbolBody):
     from config import settings
-    from database import get_setting, set_setting
-    sym = symbol.strip().upper()
+    from database import set_setting
+    sym = req.symbol.strip().upper()
     if not sym:
         return {"error": "Symbol cannot be empty"}
     if sym in settings.SYMBOLS:
@@ -218,11 +222,11 @@ def add_symbol(symbol: str):
     set_setting("symbols", ",".join(settings.SYMBOLS))
     return {"symbols": settings.SYMBOLS}
 
-@router.delete("/symbols")
-def delete_symbol(symbol: str):
+@router.post("/symbols/remove")
+def remove_symbol(req: SymbolBody):
     from config import settings
     from database import set_setting
-    sym = symbol.strip().upper()
+    sym = req.symbol.strip().upper()
     if sym not in settings.SYMBOLS:
         return {"error": f"{sym} not in list"}
     if len(settings.SYMBOLS) <= 1:
