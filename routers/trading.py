@@ -296,8 +296,10 @@ def ml_retrain(db: Session = Depends(get_db)):
     return ml.retrain(db)
 
 @router.post("/ml/train-from-backtest")
-def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730):
-    """Run backtest silently, collect all (scores, outcome) pairs, train ML model."""
+def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730, train_threshold: int = 2):
+    """Run backtest with low threshold to collect diverse samples, then train ML model.
+    Using threshold=2 gives ~130 samples vs 35 at threshold=5.
+    The ML model learns what makes ANY signal win/lose — threshold=5 gate still filters live trades."""
     global _backtest_result
 
     _bt_train_result = {"status": "running", "result": None}
@@ -306,8 +308,8 @@ def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730):
         try:
             bt._data_cache.clear()
             from services import binance as binance_svc
-            binance_svc._cache.clear()  # force fresh 2-year fetch
-            result = bt.run(lookback_days=days)
+            binance_svc._cache.clear()
+            result = bt.run(lookback_days=days, buy_threshold=train_threshold, sell_threshold=-train_threshold)
             samples = []
             for sym_result in result.get("per_symbol", []):
                 samples.extend(sym_result.get("ml_samples", []))
