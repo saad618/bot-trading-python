@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.getenv(
@@ -12,18 +12,15 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 _is_sqlite = "sqlite" in DATABASE_URL
-connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
+if _is_sqlite:
+    connect_args = {"check_same_thread": False}
+else:
+    # psycopg2 passes options to PostgreSQL at connection time —
+    # search_path is set before any query runs, including create_all
+    connect_args = {"options": f"-c search_path={DB_SCHEMA}"}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
-
-# Set search_path on every new Postgres connection so all queries hit the right schema
-if not _is_sqlite:
-    @event.listens_for(engine, "connect")
-    def _set_search_path(dbapi_conn, _):
-        cursor = dbapi_conn.cursor()
-        cursor.execute(f'SET search_path TO "{DB_SCHEMA}"')
-        cursor.close()
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -37,17 +34,20 @@ def get_db():
 def init_db():
     from models import Trade, OpenPosition, AppSetting
     if not _is_sqlite:
-        with engine.connect() as conn:
+        # Must create schema before create_all — use a connection without search_path restriction
+        raw_url = DATABASE_URL  # no options here, connects to public schema by default
+        setup_engine = create_engine(raw_url)
+        with setup_engine.connect() as conn:
             conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{DB_SCHEMA}"'))
             conn.commit()
+        setup_engine.dispose()
     Base.metadata.create_all(bind=engine)
 
 def migrate_db():
     """Safely add new columns without dropping existing data."""
-    schema_prefix = f'"{DB_SCHEMA}".' if not _is_sqlite else ""
     new_columns = [
-        f"ALTER TABLE {schema_prefix}open_positions ADD COLUMN entry_scores TEXT",
-        f"ALTER TABLE {schema_prefix}open_positions ADD COLUMN exit_pnl FLOAT",
+        "ALTER TABLE open_positions ADD COLUMN entry_scores TEXT",
+        "ALTER TABLE open_positions ADD COLUMN exit_pnl FLOAT",
     ]
     with engine.connect() as conn:
         for sql in new_columns:
