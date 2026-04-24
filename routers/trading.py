@@ -141,6 +141,54 @@ def start_backtest(background_tasks: BackgroundTasks, days: int = 365, buy_thres
 def get_backtest_result():
     return _backtest_result
 
+_compare_result = {"status": "idle", "result": None}
+
+@router.post("/backtest/compare")
+def compare_thresholds(background_tasks: BackgroundTasks, days: int = 365):
+    global _compare_result
+    if _compare_result["status"] == "running":
+        return {"status": "already running — check /api/backtest/compare/result"}
+    _compare_result = {"status": "running", "result": None}
+
+    def _run():
+        global _compare_result
+        try:
+            thresholds = [2, 3, 4, 5]
+            comparison = {}
+            for thr in thresholds:
+                result = bt.run(lookback_days=days, buy_threshold=thr, sell_threshold=-thr)
+                s = result["summary"]
+                comparison[f"threshold_{thr}"] = {
+                    "buy_threshold":    thr,
+                    "total_trades":     s["total_trades"],
+                    "win_rate_pct":     s["win_rate_pct"],
+                    "total_pnl":        s["total_pnl"],
+                    "total_return_pct": s["total_return_pct"],
+                    "final_balance":    s["final_balance"],
+                    "oos_win_rate":     s["oos_summary"]["win_rate"],
+                    "oos_pnl":          s["oos_summary"]["total_pnl"],
+                }
+            # Pick best threshold by OOS (out-of-sample) P&L — most honest metric
+            best = max(comparison.values(), key=lambda x: x["oos_pnl"])
+            _compare_result = {
+                "status": "done",
+                "result": {
+                    "comparison": comparison,
+                    "recommended_threshold": best["buy_threshold"],
+                    "reason": f"Best out-of-sample P&L: ${best['oos_pnl']:.2f} at threshold {best['buy_threshold']}",
+                    "days_tested": days,
+                }
+            }
+        except Exception as e:
+            _compare_result = {"status": "error", "result": str(e)}
+
+    background_tasks.add_task(_run)
+    return {"status": "started", "message": f"Comparing thresholds 2–5 over {days} days — takes ~2 min for crypto. Poll /api/backtest/compare/result"}
+
+@router.get("/backtest/compare/result")
+def get_compare_result():
+    return _compare_result
+
 @router.post("/backtest/clear-cache")
 def clear_cache():
     bt._data_cache.clear()
