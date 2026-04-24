@@ -26,7 +26,7 @@ def get_daily_prices(symbol: str) -> pd.DataFrame:
         params = {
             "symbol":   _to_binance_symbol(symbol),
             "interval": "1d",
-            "limit":    500,   # ~1.5 years of daily candles
+            "limit":    1000,  # ~2.7 years of daily candles (Binance max)
         }
         r = requests.get(_BASE_URL, params=params, timeout=30)
         r.raise_for_status()
