@@ -24,8 +24,8 @@ class Settings:
     RSI_PERIOD = 14
     BREAKOUT_PERIOD = 20
 
-    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "5").strip().lstrip("=").strip())
-    SELL_SCORE_THRESHOLD = int(os.getenv("SELL_SCORE_THRESHOLD", "-5").strip().lstrip("=").strip())
+    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "3").strip().lstrip("=").strip())
+    SELL_SCORE_THRESHOLD = int(os.getenv("SELL_SCORE_THRESHOLD", "-3").strip().lstrip("=").strip())
 
     POSITION_SIZE_PERCENT = float(os.getenv("POSITION_SIZE_PERCENT", "2.0"))
     POSITION_SIZE_MIN_PCT = float(os.getenv("POSITION_SIZE_MIN_PCT", "1.0"))  # weak signal
