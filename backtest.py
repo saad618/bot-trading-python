@@ -151,17 +151,17 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         sell_thr = sell_threshold if sell_threshold is not None else settings.SELL_SCORE_THRESHOLD
 
         if result.score >= buy_thr and position is None:
-            # Market regime gate: only buy when price is above 50-EMA
-            prices_arr = window["close"].values[::-1][:50]
-            k50 = 2.0 / 51
-            ema50 = float(prices_arr[0])
+            # Market regime gate: only buy when price is above 20-EMA
+            prices_arr = window["close"].values[::-1][:20]
+            k20 = 2.0 / 21
+            ema20 = float(prices_arr[0])
             for p in prices_arr[1:]:
-                ema50 = float(p) * k50 + ema50 * (1 - k50)
-            in_uptrend = float(price) > ema50
+                ema20 = float(p) * k20 + ema20 * (1 - k20)
+            in_uptrend = float(price) > ema20
 
             if in_uptrend:
                 buy_opportunities += 1
-                qty = risk_manager.calculate_quantity(cash, price, result.score)
+                qty = risk_manager.calculate_quantity(cash, float(price), result.score)
                 if qty > 0 and cash >= qty * price:
                     cash -= qty * price
                     position = {

@@ -163,13 +163,13 @@ def get_live_signals():
             price  = float(df.iloc[0]["close"])
             atr    = float(atr_svc.calculate(df))
 
-            # 50-EMA uptrend check
-            prices = df["close"].values[::-1][:50]
-            k = 2.0 / 51
-            ema50 = float(prices[0])
+            # 20-EMA uptrend check
+            prices = df["close"].values[::-1][:20]
+            k = 2.0 / 21
+            ema20 = float(prices[0])
             for p in prices[1:]:
-                ema50 = float(p) * k + ema50 * (1 - k)
-            in_uptrend = price > ema50
+                ema20 = float(p) * k + ema20 * (1 - k)
+            in_uptrend = price > ema20
 
             results.append({
                 "symbol":     symbol,
@@ -177,11 +177,11 @@ def get_live_signals():
                 "score":      int(result.score),
                 "signal":     result.signal,
                 "in_uptrend": in_uptrend,
-                "ema50":      round(ema50, 4),
+                "ema20":      round(ema20, 4),
                 "atr":        atr,
                 "breakdown":  {k: int(v) for k, v in result.breakdown.items()},
                 "buy_blocked_reason": (
-                    "downtrend (price < 50-EMA)" if result.signal == "BUY" and not in_uptrend
+                    "downtrend (price < 20-EMA)" if result.signal == "BUY" and not in_uptrend
                     else "score below threshold" if result.score < settings.BUY_SCORE_THRESHOLD
                     else None
                 ),

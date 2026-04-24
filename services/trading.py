@@ -100,10 +100,10 @@ def _process_symbol(symbol: str, db: Session):
         logger.info(f"[{symbol}] HOLD")
 
 def _is_uptrend(df) -> bool:
-    if len(df) < 50:
+    if len(df) < 20:
         return True
-    prices = df["close"].values[::-1][:50]
-    k = 2.0 / 51
+    prices = df["close"].values[::-1][:20]
+    k = 2.0 / 21
     ema = float(prices[0])
     for p in prices[1:]:
         ema = float(p) * k + ema * (1 - k)
