@@ -13,8 +13,8 @@ class Settings:
     RSI_PERIOD = 14
     BREAKOUT_PERIOD = 20
 
-    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "5"))
-    SELL_SCORE_THRESHOLD = int(os.getenv("SELL_SCORE_THRESHOLD", "-5"))
+    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "5").strip().lstrip("=").strip())
+    SELL_SCORE_THRESHOLD = int(os.getenv("SELL_SCORE_THRESHOLD", "-5").strip().lstrip("=").strip())
 
     POSITION_SIZE_PERCENT = float(os.getenv("POSITION_SIZE_PERCENT", "2.0"))
     STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT", "1.5"))
