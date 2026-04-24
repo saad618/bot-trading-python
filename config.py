@@ -9,8 +9,8 @@ class Settings:
     API_BASE_URL = "https://www.alphavantage.co/query"
 
     # Set DATA_SOURCE=crypto in .env to switch to Binance / crypto mode
-    DATA_SOURCE = os.getenv("DATA_SOURCE", "stocks")   # "stocks" | "crypto"
-    _crypto = os.getenv("DATA_SOURCE", "stocks") == "crypto"
+    DATA_SOURCE = os.getenv("DATA_SOURCE", "stocks").strip().lstrip("=").strip().lower()
+    _crypto = DATA_SOURCE == "crypto"
 
     _default_symbols = (
         "BTC/USDT,ETH/USDT,BNB/USDT,SOL/USDT,ADA/USDT"
