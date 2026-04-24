@@ -302,6 +302,7 @@ def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730):
 
     def _run():
         try:
+            bt._data_cache.clear()  # force fresh 2-year fetch
             result = bt.run(lookback_days=days)
             samples = []
             for sym_result in result.get("per_symbol", []):
