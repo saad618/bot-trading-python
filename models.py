@@ -35,3 +35,5 @@ class OpenPosition(Base):
     target_price = Column(Float, nullable=False)
     opened_at = Column(DateTime, default=datetime.utcnow)
     status = Column(SQLEnum(PositionStatus), default=PositionStatus.OPEN)
+    entry_scores = Column(String, nullable=True)   # JSON: strategy breakdown at buy time
+    exit_pnl = Column(Float, nullable=True)        # populated when position closes

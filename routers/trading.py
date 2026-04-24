@@ -140,3 +140,13 @@ def get_backtest_result():
 def clear_cache():
     bt._data_cache.clear()
     return {"status": "ok", "message": "Data cache cleared — next backtest will re-fetch from Alpha Vantage"}
+
+@router.get("/ml/status")
+def ml_status():
+    from services import ml_model as ml
+    return ml.get_status()
+
+@router.post("/ml/retrain")
+def ml_retrain(db: Session = Depends(get_db)):
+    from services import ml_model as ml
+    return ml.retrain(db)

@@ -1,3 +1,4 @@
+import json
 import time
 import logging
 from datetime import datetime, date
@@ -7,6 +8,7 @@ from services import alpha_vantage
 from services import binance as binance_svc
 from services import atr as atr_service
 from services import risk_manager
+from services import ml_model
 from services.portfolio import portfolio_service
 from strategies import composite
 from services import telegram
@@ -68,8 +70,10 @@ def _process_symbol(symbol: str, db: Session):
     _check_open_positions(symbol, current_price, atr, db)
 
     result = composite.evaluate(df)
-    breakdown = "  ".join(f"{k}:{'+' if v >= 0 else ''}{v}" for k, v in result.breakdown.items())
-    logger.info(f"[{symbol}] ${current_price:.4f} | {breakdown} | Score:{result.score} | {result.signal} | ATR:{atr:.4f}")
+    breakdown_str = "  ".join(f"{k}:{'+' if v >= 0 else ''}{v}" for k, v in result.breakdown.items())
+    ml_prob = ml_model.predict(result.breakdown)
+    ml_str = f" | ML:{ml_prob:.0%}" if ml_prob is not None else ""
+    logger.info(f"[{symbol}] ${current_price:.4f} | {breakdown_str} | Score:{result.score} | {result.signal}{ml_str} | ATR:{atr:.4f}")
 
     has_open = db.query(OpenPosition).filter(
         OpenPosition.symbol == symbol,
@@ -86,8 +90,10 @@ def _process_symbol(symbol: str, db: Session):
             logger.info(f"[{symbol}] BUY blocked — ATR {atr:.4f} = {atr/current_price*100:.1f}% of price (too volatile)")
         elif _is_low_liquidity_hour():
             logger.info(f"[{symbol}] BUY blocked — low liquidity window (01-05 UTC weekend)")
+        elif ml_prob is not None and ml_prob < 0.55:
+            logger.info(f"[{symbol}] BUY blocked by ML model (win probability: {ml_prob:.0%} < 55%)")
         else:
-            _execute_buy(symbol, current_price, atr, result.score, db)
+            _execute_buy(symbol, current_price, atr, result.score, result.breakdown, db)
     elif result.signal == "SELL" and has_open:
         _close_by_signal(symbol, current_price, db)
     else:
@@ -142,7 +148,7 @@ def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
             telegram.notify_target(symbol, price, profit)
             _close_position(pos, price, PositionStatus.CLOSED_TARGET, db)
 
-def _execute_buy(symbol: str, price: float, atr: float, score: int, db: Session):
+def _execute_buy(symbol: str, price: float, atr: float, score: int, breakdown: dict, db: Session):
     cash = portfolio_service.get_cash_balance()
     qty = risk_manager.calculate_quantity(cash, price, score)
 
@@ -158,7 +164,8 @@ def _execute_buy(symbol: str, price: float, atr: float, score: int, db: Session)
                  total_value=qty * price, realized_pnl=0.0, notes=mode))
     db.add(OpenPosition(symbol=symbol, quantity=qty, entry_price=price,
                         stop_loss_price=stop_loss, target_price=target,
-                        status=PositionStatus.OPEN))
+                        status=PositionStatus.OPEN,
+                        entry_scores=json.dumps(breakdown)))
     db.commit()
     portfolio_service.apply_trade("BUY", symbol, qty, price)
     logger.info(f"[{symbol}] BUY {qty:.6f} @ ${price:.4f} | SL:${stop_loss:.4f} | Target:${target:.4f} | Score:{score}")
@@ -176,6 +183,7 @@ def _close_by_signal(symbol: str, price: float, db: Session):
 
 def _close_position(pos: OpenPosition, price: float, reason: PositionStatus, db: Session):
     pnl  = (price - pos.entry_price) * pos.quantity
+    pos.exit_pnl = pnl   # recorded for ML training
     mode = "PAPER TRADE" if settings.PAPER_TRADING else "LIVE TRADE"
 
     db.add(Trade(symbol=pos.symbol, type=TradeType.SELL, quantity=pos.quantity,

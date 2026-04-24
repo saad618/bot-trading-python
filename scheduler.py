@@ -17,6 +17,17 @@ def _run_trading_cycle():
     finally:
         db.close()
 
+def _retrain_ml_model():
+    from services import ml_model as ml
+    db = SessionLocal()
+    try:
+        result = ml.retrain(db)
+        logger.info(f"[ML] Weekly retrain complete: {result}")
+    except Exception as e:
+        logger.error(f"[ML] Weekly retrain failed: {e}")
+    finally:
+        db.close()
+
 def send_daily_report():
     import traceback
     db = SessionLocal()
@@ -52,6 +63,11 @@ def start_scheduler():
             day_of_week="mon-fri", hour=15, minute=35, timezone="Asia/Kolkata"
         ), id="daily_report")
         logger.info("Scheduler started (STOCKS mode) — trading every 5 min Mon-Fri 9-15 IST, report at 15:35 IST")
+
+    # ML model retrains every Sunday at 01:00 UTC regardless of data source
+    scheduler.add_job(_retrain_ml_model, CronTrigger(day_of_week="sun", hour=1, minute=0, timezone="UTC"), id="ml_retrain")
+    logger.info("ML retrain scheduled: every Sunday 01:00 UTC")
+    scheduler.start()
 
 def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
     date_str = date.today().strftime("%A, %d %B %Y")

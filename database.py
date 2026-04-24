@@ -22,3 +22,17 @@ def get_db():
 def init_db():
     from models import Trade, OpenPosition
     Base.metadata.create_all(bind=engine)
+
+def migrate_db():
+    """Safely add new columns without dropping existing data."""
+    new_columns = [
+        "ALTER TABLE open_positions ADD COLUMN entry_scores TEXT",
+        "ALTER TABLE open_positions ADD COLUMN exit_pnl FLOAT",
+    ]
+    with engine.connect() as conn:
+        for sql in new_columns:
+            try:
+                conn.execute(__import__("sqlalchemy").text(sql))
+                conn.commit()
+            except Exception:
+                pass  # column already exists — safe to ignore

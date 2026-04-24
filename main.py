@@ -3,7 +3,7 @@ import os
 from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
-from database import init_db
+from database import init_db, migrate_db
 from routers.trading import router
 from scheduler import start_scheduler
 
@@ -15,6 +15,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    migrate_db()
     start_scheduler()
     yield
 
