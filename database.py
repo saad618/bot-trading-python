@@ -58,24 +58,33 @@ def migrate_db():
                 pass
 
 def get_setting(key: str, default: str = "") -> str:
-    db = SessionLocal()
+    import logging
     try:
-        from models import AppSetting
-        row = db.query(AppSetting).filter(AppSetting.key == key).first()
-        return row.value if row else default
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            from models import AppSetting
+            row = db.query(AppSetting).filter(AppSetting.key == key).first()
+            return row.value if row else default
+        finally:
+            db.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"[DB] get_setting({key}) failed: {e}")
+        return default
 
 def set_setting(key: str, value: str):
-    db = SessionLocal()
+    import logging
     try:
-        from models import AppSetting
-        import sqlalchemy
-        row = db.query(AppSetting).filter(AppSetting.key == key).first()
-        if row:
-            row.value = value
-        else:
-            db.add(AppSetting(key=key, value=value))
-        db.commit()
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            from models import AppSetting
+            row = db.query(AppSetting).filter(AppSetting.key == key).first()
+            if row:
+                row.value = value
+            else:
+                db.add(AppSetting(key=key, value=value))
+            db.commit()
+            logging.getLogger(__name__).info(f"[DB] set_setting({key}) saved ({len(value)} chars)")
+        finally:
+            db.close()
+    except Exception as e:
+        logging.getLogger(__name__).error(f"[DB] set_setting({key}) failed: {e}")
