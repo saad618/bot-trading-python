@@ -13,6 +13,18 @@ router = APIRouter(prefix="/api")
 def get_status():
     return {"running": trading_svc.is_running()}
 
+@router.get("/config")
+def get_config():
+    from config import settings
+    return {
+        "data_source": settings.DATA_SOURCE,
+        "symbols": settings.SYMBOLS,
+        "stop_loss_pct": settings.STOP_LOSS_PERCENT,
+        "target_pct": settings.TARGET_PERCENT,
+        "max_daily_loss_pct": settings.MAX_DAILY_LOSS_PERCENT,
+        "buy_threshold": settings.BUY_SCORE_THRESHOLD,
+    }
+
 @router.post("/trading/test-telegram")
 def test_telegram():
     from services.telegram import send_message
