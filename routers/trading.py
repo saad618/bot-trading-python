@@ -294,7 +294,7 @@ def ml_retrain(db: Session = Depends(get_db)):
     return ml.retrain(db)
 
 @router.post("/ml/train-from-backtest")
-def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 365):
+def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730):
     """Run backtest silently, collect all (scores, outcome) pairs, train ML model."""
     global _backtest_result
 
