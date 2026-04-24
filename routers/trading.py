@@ -296,9 +296,9 @@ def ml_retrain(db: Session = Depends(get_db)):
     return ml.retrain(db)
 
 @router.post("/ml/train-from-backtest")
-def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730, train_threshold: int = 2):
+def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 730, train_threshold: int = 1):
     """Run backtest with low threshold to collect diverse samples, then train ML model.
-    Using threshold=2 gives ~130 samples vs 35 at threshold=5.
+    Using threshold=1 collects ~150+ samples vs 35 at threshold=5.
     The ML model learns what makes ANY signal win/lose — threshold=5 gate still filters live trades."""
     global _backtest_result
 
