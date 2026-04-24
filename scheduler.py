@@ -38,14 +38,20 @@ def send_daily_report():
         db.close()
 
 def start_scheduler():
-    scheduler.add_job(_run_trading_cycle, CronTrigger(
-        day_of_week="mon-fri", hour="9-15", minute="*/5", timezone="Asia/Kolkata"
-    ), id="trading_cycle")
-    scheduler.add_job(send_daily_report, CronTrigger(
-        day_of_week="mon-fri", hour=15, minute=35, timezone="Asia/Kolkata"
-    ), id="daily_report")
-    scheduler.start()
-    logger.info("Scheduler started — trading every 5 min, report at 15:35 IST")
+    from config import settings
+    if settings.DATA_SOURCE == "crypto":
+        # Crypto trades 24/7 — no market-hours restriction
+        scheduler.add_job(_run_trading_cycle, CronTrigger(minute="*/5"), id="trading_cycle")
+        scheduler.add_job(send_daily_report,  CronTrigger(hour=0, minute=0, timezone="UTC"), id="daily_report")
+        logger.info("Scheduler started (CRYPTO mode) — trading every 5 min 24/7, report at 00:00 UTC")
+    else:
+        scheduler.add_job(_run_trading_cycle, CronTrigger(
+            day_of_week="mon-fri", hour="9-15", minute="*/5", timezone="Asia/Kolkata"
+        ), id="trading_cycle")
+        scheduler.add_job(send_daily_report, CronTrigger(
+            day_of_week="mon-fri", hour=15, minute=35, timezone="Asia/Kolkata"
+        ), id="daily_report")
+        logger.info("Scheduler started (STOCKS mode) — trading every 5 min Mon-Fri 9-15 IST, report at 15:35 IST")
 
 def _build_html_report(trades, open_positions, today_pnl, total_pnl, cash):
     date_str = date.today().strftime("%A, %d %B %Y")

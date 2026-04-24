@@ -22,6 +22,27 @@ def _fetch_full_history(symbol: str) -> pd.DataFrame:
     if not cached_df.empty and (time.time() - cached_at) < _CACHE_TTL_SECONDS:
         logger.info(f"[{symbol}] Using cached data ({len(cached_df)} bars)")
         return cached_df
+
+    if settings.DATA_SOURCE == "crypto":
+        return _fetch_binance(symbol)
+    return _fetch_alpha_vantage(symbol)
+
+def _fetch_binance(symbol: str) -> pd.DataFrame:
+    from services import binance as binance_svc
+    try:
+        logger.info(f"[{symbol}] Fetching from Binance...")
+        df = binance_svc.get_daily_prices(symbol)   # newest-first
+        if df.empty:
+            return pd.DataFrame()
+        df = df.sort_values("date", ascending=True).reset_index(drop=True)  # oldest-first for backtest
+        _data_cache[symbol] = (time.time(), df)
+        logger.info(f"[{symbol}] Fetched {len(df)} days from Binance")
+        return df
+    except Exception as e:
+        logger.error(f"[{symbol}] Binance fetch error: {e}", exc_info=True)
+        return pd.DataFrame()
+
+def _fetch_alpha_vantage(symbol: str) -> pd.DataFrame:
     try:
         logger.info(f"[{symbol}] Fetching from Alpha Vantage (compact)...")
         params = {
@@ -248,8 +269,8 @@ def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int
 
     for i, symbol in enumerate(symbols):
         logger.info(f"Backtesting [{symbol}] ...")
-        if i > 0:
-            time.sleep(13)  # Alpha Vantage 5 req/min
+        if i > 0 and settings.DATA_SOURCE == "stocks":
+            time.sleep(13)  # Alpha Vantage free tier: 5 req/min
 
         df = _fetch_full_history(symbol)
         if df.empty:

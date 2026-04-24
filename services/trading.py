@@ -4,6 +4,7 @@ from datetime import datetime, date
 from sqlalchemy.orm import Session
 from models import Trade, OpenPosition, TradeType, PositionStatus
 from services import alpha_vantage
+from services import binance as binance_svc
 from services import atr as atr_service
 from services import risk_manager
 from services.portfolio import portfolio_service
@@ -50,8 +51,13 @@ def execute_trading_cycle(db: Session):
     open_count = db.query(OpenPosition).filter(OpenPosition.status == PositionStatus.OPEN).count()
     logger.info(f"=== Cycle Done | Cash: ₹{portfolio_service.get_cash_balance():.2f} | Open: {open_count} | Today P&L: ₹{get_today_pnl(db):.2f} ===")
 
+def _get_prices(symbol: str):
+    if settings.DATA_SOURCE == "crypto":
+        return binance_svc.get_daily_prices(symbol)
+    return alpha_vantage.get_daily_prices(symbol)
+
 def _process_symbol(symbol: str, db: Session):
-    df = alpha_vantage.get_daily_prices(symbol)
+    df = _get_prices(symbol)
     if df.empty:
         logger.warning(f"[{symbol}] No data. Skipping.")
         return
@@ -72,7 +78,7 @@ def _process_symbol(symbol: str, db: Session):
     if result.signal == "BUY" and not has_open:
         if not _is_uptrend(df):
             logger.info(f"[{symbol}] BUY signal blocked — price below 50-EMA (downtrend)")
-        elif risk_manager.is_high_volatility(current_price, atr):
+        elif risk_manager.is_high_volatility(current_price, atr, settings.MAX_ATR_PERCENT):
             logger.info(f"[{symbol}] BUY signal blocked — ATR {atr:.2f} = {atr/current_price*100:.1f}% of price (too volatile)")
         else:
             _execute_buy(symbol, current_price, atr, db)
