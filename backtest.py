@@ -304,9 +304,6 @@ def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int
     wins     = [p for p in all_pnl if p > 0]
 
     # OOS summary (honest out-of-sample view)
-    oos_pnl  = [t["pnl"] for r in results
-                for t in r.get("oos_metrics", {}).get("total_pnl", [])
-                if isinstance(r.get("oos_metrics"), dict) and "total_pnl" in r["oos_metrics"]]
     oos_total = sum(r["oos_metrics"]["total_pnl"] for r in results
                     if isinstance(r.get("oos_metrics"), dict) and "total_pnl" in r["oos_metrics"])
     oos_trades = sum(r["oos_metrics"].get("total_trades", 0) for r in results
