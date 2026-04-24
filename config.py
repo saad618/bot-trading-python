@@ -5,6 +5,7 @@ load_dotenv()
 
 class Settings:
     API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "T50H37RBFKT509FY")
+    BACKTEST_API_KEY = os.getenv("BACKTEST_API_KEY", "") or os.getenv("ALPHA_VANTAGE_API_KEY", "T50H37RBFKT509FY")
     API_BASE_URL = "https://www.alphavantage.co/query"
     SYMBOLS = os.getenv("SYMBOLS", "RELIANCE.BSE,TCS.BSE,INFY.BSE,MARUTI.BSE,SUNPHARMA.BSE").split(",")
 

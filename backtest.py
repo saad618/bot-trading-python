@@ -28,7 +28,7 @@ def _fetch_full_history(symbol: str) -> pd.DataFrame:
             "function":   "TIME_SERIES_DAILY",
             "symbol":     symbol,
             "outputsize": "compact",
-            "apikey":     settings.API_KEY,
+            "apikey":     settings.BACKTEST_API_KEY,
             "datatype":   "json",
         }
         r = requests.get(settings.API_BASE_URL, params=params, timeout=30)
