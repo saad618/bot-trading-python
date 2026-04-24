@@ -74,23 +74,31 @@ _backtest_result = {"status": "idle", "result": None}
 
 @router.get("/backtest/test-fetch")
 def test_fetch():
-    import requests, os
-    api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "T50H37RBFKT509FY")
+    from config import settings
+    symbol = settings.SYMBOLS[0]
     try:
-        params = {
-            "function": "TIME_SERIES_DAILY", "symbol": "RELIANCE.BSE",
-            "outputsize": "compact", "apikey": api_key, "datatype": "json",
-        }
-        data = requests.get("https://www.alphavantage.co/query", params=params, timeout=30).json()
-        if "Error Message" in data:
-            return {"status": "failed", "message": data["Error Message"]}
-        if "Information" in data:
-            return {"status": "rate_limited", "message": data["Information"]}
-        ts = data.get("Time Series (Daily)", {})
-        if not ts:
-            return {"status": "failed", "message": "No time series data", "keys": list(data.keys())}
-        rows = list(ts.items())
-        return {"status": "ok", "source": "Alpha Vantage (compact)", "rows": len(rows), "latest_date": rows[0][0], "sample": rows[0][1]}
+        if settings.DATA_SOURCE == "crypto":
+            from services import binance as binance_svc
+            df = binance_svc.get_daily_prices(symbol)
+            if df.empty:
+                return {"status": "failed", "message": "No data returned from Binance"}
+            return {"status": "ok", "source": "Binance", "symbol": symbol,
+                    "rows": len(df), "latest_date": str(df.iloc[0]["date"].date()),
+                    "latest_close": df.iloc[0]["close"]}
+        else:
+            import requests as req
+            api_key = settings.API_KEY
+            params = {"function": "TIME_SERIES_DAILY", "symbol": symbol,
+                      "outputsize": "compact", "apikey": api_key, "datatype": "json"}
+            data = req.get(settings.API_BASE_URL, params=params, timeout=30).json()
+            if "Error Message" in data:
+                return {"status": "failed", "message": data["Error Message"]}
+            if "Information" in data:
+                return {"status": "rate_limited", "message": data["Information"]}
+            ts = data.get("Time Series (Daily)", {})
+            rows = list(ts.items())
+            return {"status": "ok", "source": "Alpha Vantage", "symbol": symbol,
+                    "rows": len(rows), "latest_date": rows[0][0]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
