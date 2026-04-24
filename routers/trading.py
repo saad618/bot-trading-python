@@ -218,7 +218,7 @@ def add_symbol(symbol: str):
     set_setting("symbols", ",".join(settings.SYMBOLS))
     return {"symbols": settings.SYMBOLS}
 
-@router.delete("/symbols/{symbol}")
+@router.delete("/symbols")
 def delete_symbol(symbol: str):
     from config import settings
     from database import set_setting
