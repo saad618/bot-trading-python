@@ -25,7 +25,11 @@ class RsiStrategy(TradingStrategy):
         rsi = 100.0 if avg_loss == 0 else 100 - (100 / (1 + avg_gain / avg_loss))
 
         if rsi < 30:
-            return 2
+            return 2    # extreme oversold
+        if rsi < 45:
+            return 1    # recovering from oversold
         if rsi > 70:
-            return -2
+            return -2   # extreme overbought
+        if rsi > 55:
+            return -1   # approaching overbought
         return 0

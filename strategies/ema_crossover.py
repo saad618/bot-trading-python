@@ -24,7 +24,11 @@ class EmaCrossoverStrategy(TradingStrategy):
         ema21_now, ema21_prev = ema_last_two(21)
 
         if ema9_prev <= ema21_prev and ema9_now > ema21_now:
-            return 2   # golden cross
+            return 2    # golden cross
         if ema9_prev >= ema21_prev and ema9_now < ema21_now:
-            return -2  # death cross
+            return -2   # death cross
+        if ema9_now > ema21_now:
+            return 1    # bullish trend continuation
+        if ema9_now < ema21_now:
+            return -1   # bearish trend continuation
         return 0

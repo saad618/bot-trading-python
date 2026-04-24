@@ -11,6 +11,7 @@ from strategies.trend_filter import TrendFilterStrategy
 from strategies.macd import MacdStrategy
 from strategies.bollinger_bands import BollingerBandsStrategy
 from strategies.stochastic import StochasticStrategy
+from strategies.adx import AdxStrategy
 
 @dataclass
 class StrategyResult:
@@ -18,12 +19,13 @@ class StrategyResult:
     breakdown: Dict[str, int]
     signal: str
 
-# All 9 strategies
-# Max possible score: EMA±2 + RSI±2 + MACD±2 + BRK±1 + VOL±1 + CDL±1 + TRD±1 + BB±1 + STOCH±1 = ±12
+# All 10 strategies
+# Max possible score: EMA±2 + RSI±2 + MACD±2 + ADX±1 + BRK±1 + VOL±1 + CDL±1 + TRD±1 + BB±1 + STOCH±1 = ±13
 _strategies = [
     EmaCrossoverStrategy(),
     RsiStrategy(),
     MacdStrategy(),
+    AdxStrategy(),
     BollingerBandsStrategy(),
     StochasticStrategy(),
     BreakoutStrategy(),

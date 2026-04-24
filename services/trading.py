@@ -70,10 +70,12 @@ def _process_symbol(symbol: str, db: Session):
     ).first() is not None
 
     if result.signal == "BUY" and not has_open:
-        if _is_uptrend(df):
-            _execute_buy(symbol, current_price, atr, db)
-        else:
+        if not _is_uptrend(df):
             logger.info(f"[{symbol}] BUY signal blocked — price below 50-EMA (downtrend)")
+        elif risk_manager.is_high_volatility(current_price, atr):
+            logger.info(f"[{symbol}] BUY signal blocked — ATR {atr:.2f} = {atr/current_price*100:.1f}% of price (too volatile)")
+        else:
+            _execute_buy(symbol, current_price, atr, db)
     elif result.signal == "SELL" and has_open:
         _close_by_signal(symbol, current_price, db)
     else:
