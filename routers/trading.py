@@ -244,3 +244,30 @@ def ml_status():
 def ml_retrain(db: Session = Depends(get_db)):
     from services import ml_model as ml
     return ml.retrain(db)
+
+@router.post("/ml/train-from-backtest")
+def ml_train_from_backtest(background_tasks: BackgroundTasks, days: int = 365):
+    """Run backtest silently, collect all (scores, outcome) pairs, train ML model."""
+    global _backtest_result
+
+    _bt_train_result = {"status": "running", "result": None}
+
+    def _run():
+        try:
+            result = bt.run(lookback_days=days)
+            samples = []
+            for sym_result in result.get("per_symbol", []):
+                samples.extend(sym_result.get("ml_samples", []))
+            from services import ml_model as ml
+            train_result = ml.train_from_samples(samples)
+            _bt_train_result["status"] = "done"
+            _bt_train_result["result"] = train_result
+        except Exception as e:
+            _bt_train_result["status"] = "error"
+            _bt_train_result["result"] = str(e)
+
+    background_tasks.add_task(_run)
+    return {
+        "status": "started",
+        "message": f"Running {days}-day backtest to collect training data — takes ~65s. Poll /api/ml/status when done."
+    }

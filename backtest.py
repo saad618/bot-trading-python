@@ -93,8 +93,10 @@ def _fetch_alpha_vantage(symbol: str) -> pd.DataFrame:
 
 def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int = None, sell_threshold: int = None) -> dict:
     trades = []
+    ml_samples = []   # (breakdown_dict, win: int) collected for ML training
     cash = capital
     position = None
+    pending_breakdown = None  # strategy scores saved at buy time
     WARMUP = 60
     max_score = -99
     min_score = 99
@@ -109,34 +111,36 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         atr = atr_svc.calculate(window)
 
         if position:
-            # Breakeven: once price reaches halfway to target, lock stop at entry
             halfway = position["entry"] + (position["target"] - position["entry"]) * 0.5
             if price >= halfway and position["stop"] < position["entry"]:
                 position["stop"] = position["entry"]
 
-            # Raise trailing stop
             new_stop = risk_manager.calculate_trailing_stop(price, position["stop"], atr)
             if new_stop > position["stop"]:
                 position["stop"] = new_stop
 
-            # Stop-loss hit
             if price <= position["stop"]:
                 pnl = (price - position["entry"]) * position["qty"]
                 cash += position["qty"] * price
                 trades.append({"date": str(today["date"].date()), "type": "SELL",
                                 "price": round(price, 2), "qty": position["qty"],
                                 "pnl": round(pnl, 2), "reason": "STOP_LOSS"})
+                if pending_breakdown:
+                    ml_samples.append((pending_breakdown, 1 if pnl > 0 else 0))
                 position = None
+                pending_breakdown = None
                 continue
 
-            # Target hit
             if price >= position["target"]:
                 pnl = (price - position["entry"]) * position["qty"]
                 cash += position["qty"] * price
                 trades.append({"date": str(today["date"].date()), "type": "SELL",
                                 "price": round(price, 2), "qty": position["qty"],
                                 "pnl": round(pnl, 2), "reason": "TARGET"})
+                if pending_breakdown:
+                    ml_samples.append((pending_breakdown, 1 if pnl > 0 else 0))
                 position = None
+                pending_breakdown = None
                 continue
 
         result = composite.evaluate(window)
@@ -172,20 +176,23 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
                         "stop":   risk_manager.calculate_stop_loss(price, atr),
                         "target": risk_manager.calculate_target(price, atr),
                     }
+                    pending_breakdown = dict(result.breakdown)
                     trades.append({"date": str(today["date"].date()), "type": "BUY",
                                     "price": round(price, 2), "qty": qty, "pnl": 0, "reason": "SIGNAL"})
                 else:
                     buy_failed_qty += 1
 
         elif result.score <= sell_thr and position:
-            if price > position["entry"]:  # only signal-exit profitable positions
+            if price > position["entry"]:
                 pnl = (price - position["entry"]) * position["qty"]
                 cash += position["qty"] * price
                 trades.append({"date": str(today["date"].date()), "type": "SELL",
                                 "price": round(price, 2), "qty": position["qty"],
                                 "pnl": round(pnl, 2), "reason": "SIGNAL"})
+                if pending_breakdown:
+                    ml_samples.append((pending_breakdown, 1 if pnl > 0 else 0))
                 position = None
-            # else: let stop-loss handle the exit
+                pending_breakdown = None
 
     # Close open position at end of period
     if position:
@@ -194,6 +201,8 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         trades.append({"date": str(df.iloc[-1]["date"].date()), "type": "SELL",
                         "price": round(price, 2), "qty": position["qty"],
                         "pnl": round(pnl, 2), "reason": "END_OF_PERIOD"})
+        if pending_breakdown:
+            ml_samples.append((pending_breakdown, 1 if pnl > 0 else 0))
 
     diagnostics = {
         "buy_thr_used": buy_thr,
@@ -204,7 +213,8 @@ def _simulate(symbol: str, df: pd.DataFrame, capital: float, buy_threshold: int 
         "buy_failed_qty": buy_failed_qty,
         "score_samples": score_samples,
     }
-    return {"symbol": symbol, "trades": trades, "metrics": _metrics(trades, capital), "diagnostics": diagnostics}
+    return {"symbol": symbol, "trades": trades, "metrics": _metrics(trades, capital),
+            "diagnostics": diagnostics, "ml_samples": ml_samples}
 
 # ─────────────────────────────────────────────────────────────
 # Metrics calculation

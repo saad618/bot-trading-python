@@ -66,6 +66,54 @@ def predict(scores: dict) -> float | None:
         return None
 
 
+def train_from_samples(samples: list) -> dict:
+    """Train directly from (breakdown_dict, win_int) pairs — used with backtest data."""
+    import joblib
+    from sklearn.ensemble import GradientBoostingClassifier
+    from sklearn.model_selection import cross_val_score
+
+    if len(samples) < MIN_SAMPLES:
+        return {"status": "skipped", "samples": len(samples), "needed": MIN_SAMPLES}
+
+    keys = sorted(samples[0][0].keys())
+    X = [[row[0].get(k, 0) for k in keys] for row in samples]
+    y = [row[1] for row in samples]
+
+    model = GradientBoostingClassifier(
+        n_estimators=200, max_depth=3, learning_rate=0.05, random_state=42
+    )
+
+    cv_acc = None
+    if len(X) >= 50:
+        cv_scores = cross_val_score(model, X, y, cv=5, scoring="accuracy")
+        cv_acc = round(float(np.mean(cv_scores)) * 100, 1)
+
+    model.fit(X, y)
+
+    importance = {k: round(float(v), 4) for k, v in zip(keys, model.feature_importances_)}
+    top_features = sorted(importance.items(), key=lambda x: -x[1])[:3]
+
+    meta = {
+        "samples":        len(samples),
+        "win_rate_pct":   round(sum(y) / len(y) * 100, 1),
+        "cv_accuracy_pct": cv_acc,
+        "feature_keys":   keys,
+        "top_features":   dict(top_features),
+        "source":         "backtest",
+    }
+
+    _save_model({"model": model, "feature_keys": keys, "meta": meta})
+
+    global _model, _feature_keys, _model_meta
+    _model = model
+    _feature_keys = keys
+    _model_meta = meta
+
+    logger.info(f"[ML] Trained from backtest — {len(samples)} samples, "
+                f"cv_acc={cv_acc}%, top={top_features[:2]}")
+    return {"status": "trained", **meta}
+
+
 def retrain(db) -> dict:
     """Pull all closed positions that have entry_scores, fit the classifier, save to DB."""
     from models import OpenPosition, PositionStatus
