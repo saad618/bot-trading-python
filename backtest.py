@@ -300,14 +300,13 @@ def run(lookback_days: int = 365, buy_threshold: int = None, sell_threshold: int
 
         full_result = _simulate(symbol, df, capital_each, buy_threshold, sell_threshold)
 
-        # Walk-forward: re-simulate on last 30% of bars (out-of-sample test)
-        oos_start = int(len(df) * 0.7)
-        df_oos = df.iloc[oos_start:].reset_index(drop=True)
-        if len(df_oos) >= 70:
-            oos_result = _simulate(symbol, df_oos, capital_each, buy_threshold, sell_threshold)
-            full_result["oos_metrics"] = oos_result["metrics"]
-        else:
-            full_result["oos_metrics"] = {"note": "Insufficient data for OOS test"}
+        # OOS: filter trades whose SELL date falls in the last 30% of the date range
+        # (uses full history for warmup — no artificial data starvation)
+        oos_cutoff = df.iloc[int(len(df) * 0.7)]["date"]
+        oos_sells = [t for t in full_result["trades"]
+                     if t["type"] == "SELL" and pd.to_datetime(t["date"]) >= oos_cutoff]
+        full_result["oos_metrics"] = _metrics(oos_sells, capital_each) if oos_sells \
+            else {"total_trades": 0, "note": "No trades closed in OOS window"}
 
         results.append(full_result)
 

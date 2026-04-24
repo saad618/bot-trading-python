@@ -144,7 +144,7 @@ def get_backtest_result():
 _compare_result = {"status": "idle", "result": None}
 
 @router.post("/backtest/compare")
-def compare_thresholds(background_tasks: BackgroundTasks, days: int = 365):
+def compare_thresholds(background_tasks: BackgroundTasks, days: int = 730):
     global _compare_result
     if _compare_result["status"] == "running":
         return {"status": "already running — check /api/backtest/compare/result"}
@@ -167,8 +167,8 @@ def compare_thresholds(background_tasks: BackgroundTasks, days: int = 365):
                     "final_balance":    s["final_balance"],
                     "oos_win_rate":     s["oos_summary"]["win_rate"],
                     "oos_pnl":          s["oos_summary"]["total_pnl"],
+                    "oos_trades":       s["oos_summary"]["trades"],
                 }
-            # Pick best threshold by OOS (out-of-sample) P&L — most honest metric
             best = max(comparison.values(), key=lambda x: x["oos_pnl"])
             _compare_result = {
                 "status": "done",
@@ -183,7 +183,7 @@ def compare_thresholds(background_tasks: BackgroundTasks, days: int = 365):
             _compare_result = {"status": "error", "result": str(e)}
 
     background_tasks.add_task(_run)
-    return {"status": "started", "message": f"Comparing thresholds 2–5 over {days} days — takes ~2 min for crypto. Poll /api/backtest/compare/result"}
+    return {"status": "started", "message": f"Comparing thresholds 2–5 over {days} days — takes ~3 min for crypto. Poll /api/backtest/compare/result"}
 
 @router.get("/backtest/compare/result")
 def get_compare_result():
