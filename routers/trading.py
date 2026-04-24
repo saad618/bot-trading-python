@@ -141,6 +141,60 @@ def clear_cache():
     bt._data_cache.clear()
     return {"status": "ok", "message": "Data cache cleared — next backtest will re-fetch from Alpha Vantage"}
 
+@router.get("/signals")
+def get_live_signals():
+    """Return current strategy scores for every symbol."""
+    from config import settings
+    from strategies import composite
+    from services import atr as atr_svc
+    from services import binance as binance_svc
+    from services import alpha_vantage
+
+    results = []
+    for symbol in settings.SYMBOLS:
+        try:
+            df = binance_svc.get_daily_prices(symbol) if settings.DATA_SOURCE == "crypto" \
+                 else alpha_vantage.get_daily_prices(symbol)
+            if df.empty:
+                results.append({"symbol": symbol, "error": "no data"})
+                continue
+
+            result = composite.evaluate(df)
+            price  = float(df.iloc[0]["close"])
+            atr    = float(atr_svc.calculate(df))
+
+            # 50-EMA uptrend check
+            prices = df["close"].values[::-1][:50]
+            k = 2.0 / 51
+            ema50 = float(prices[0])
+            for p in prices[1:]:
+                ema50 = float(p) * k + ema50 * (1 - k)
+            in_uptrend = price > ema50
+
+            results.append({
+                "symbol":     symbol,
+                "price":      round(price, 4),
+                "score":      int(result.score),
+                "signal":     result.signal,
+                "in_uptrend": in_uptrend,
+                "ema50":      round(ema50, 4),
+                "atr":        atr,
+                "breakdown":  {k: int(v) for k, v in result.breakdown.items()},
+                "buy_blocked_reason": (
+                    "downtrend (price < 50-EMA)" if result.signal == "BUY" and not in_uptrend
+                    else "score below threshold" if result.score < settings.BUY_SCORE_THRESHOLD
+                    else None
+                ),
+            })
+        except Exception as e:
+            results.append({"symbol": symbol, "error": str(e)})
+
+    return {
+        "buy_threshold":  settings.BUY_SCORE_THRESHOLD,
+        "sell_threshold": settings.SELL_SCORE_THRESHOLD,
+        "signals":        results,
+    }
+
 @router.get("/ml/status")
 def ml_status():
     from services import ml_model as ml
