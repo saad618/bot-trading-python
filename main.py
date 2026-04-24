@@ -16,6 +16,12 @@ logging.basicConfig(
 async def lifespan(app: FastAPI):
     init_db()
     migrate_db()
+    # Load user-saved symbols from DB (overrides env var if set)
+    from database import get_setting
+    from config import settings
+    saved = get_setting("symbols")
+    if saved:
+        settings.SYMBOLS = [s.strip() for s in saved.split(",") if s.strip()]
     start_scheduler()
     yield
 

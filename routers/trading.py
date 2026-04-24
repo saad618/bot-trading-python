@@ -200,6 +200,37 @@ def get_live_signals():
         "signals":        results,
     }
 
+@router.get("/symbols")
+def get_symbols():
+    from config import settings
+    return {"symbols": settings.SYMBOLS, "data_source": settings.DATA_SOURCE}
+
+@router.post("/symbols")
+def add_symbol(symbol: str):
+    from config import settings
+    from database import get_setting, set_setting
+    sym = symbol.strip().upper()
+    if not sym:
+        return {"error": "Symbol cannot be empty"}
+    if sym in settings.SYMBOLS:
+        return {"error": f"{sym} already in list"}
+    settings.SYMBOLS = settings.SYMBOLS + [sym]
+    set_setting("symbols", ",".join(settings.SYMBOLS))
+    return {"symbols": settings.SYMBOLS}
+
+@router.delete("/symbols/{symbol}")
+def delete_symbol(symbol: str):
+    from config import settings
+    from database import set_setting
+    sym = symbol.strip().upper()
+    if sym not in settings.SYMBOLS:
+        return {"error": f"{sym} not in list"}
+    if len(settings.SYMBOLS) <= 1:
+        return {"error": "Cannot remove last symbol"}
+    settings.SYMBOLS = [s for s in settings.SYMBOLS if s != sym]
+    set_setting("symbols", ",".join(settings.SYMBOLS))
+    return {"symbols": settings.SYMBOLS}
+
 @router.get("/ml/status")
 def ml_status():
     from services import ml_model as ml

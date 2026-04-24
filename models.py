@@ -37,3 +37,8 @@ class OpenPosition(Base):
     status = Column(SQLEnum(PositionStatus), default=PositionStatus.OPEN)
     entry_scores = Column(String, nullable=True)   # JSON: strategy breakdown at buy time
     exit_pnl = Column(Float, nullable=True)        # populated when position closes
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(String(1000), nullable=False)

@@ -20,7 +20,7 @@ def get_db():
         db.close()
 
 def init_db():
-    from models import Trade, OpenPosition
+    from models import Trade, OpenPosition, AppSetting
     Base.metadata.create_all(bind=engine)
 
 def migrate_db():
@@ -35,4 +35,27 @@ def migrate_db():
                 conn.execute(__import__("sqlalchemy").text(sql))
                 conn.commit()
             except Exception:
-                pass  # column already exists — safe to ignore
+                pass
+
+def get_setting(key: str, default: str = "") -> str:
+    db = SessionLocal()
+    try:
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        return row.value if row else default
+    finally:
+        db.close()
+
+def set_setting(key: str, value: str):
+    db = SessionLocal()
+    try:
+        from models import AppSetting
+        import sqlalchemy
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if row:
+            row.value = value
+        else:
+            db.add(AppSetting(key=key, value=value))
+        db.commit()
+    finally:
+        db.close()
