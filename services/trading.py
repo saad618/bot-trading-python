@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+from collections import deque
 from datetime import datetime, date
 from sqlalchemy.orm import Session
 from models import Trade, OpenPosition, TradeType, PositionStatus
@@ -16,6 +17,21 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 _running = True
+_activity_log: deque = deque(maxlen=100)
+
+
+def get_activity_log():
+    return list(_activity_log)
+
+
+def _log(t: str, sym: str, msg: str):
+    _activity_log.appendleft({
+        "time": datetime.utcnow().strftime("%H:%M"),
+        "type": t,
+        "symbol": sym,
+        "message": msg,
+    })
+
 
 def is_running() -> bool:
     return _running
@@ -42,6 +58,7 @@ def execute_trading_cycle(db: Session):
 
     cash = portfolio_service.get_cash_balance()
     logger.info(f"=== Cycle Started | Cash: ${cash:.2f} ===")
+    _log("CYCLE", "-", f"Cycle started | Cash: ${cash:.0f}")
 
     for i, symbol in enumerate(settings.SYMBOLS):
         try:
@@ -53,6 +70,7 @@ def execute_trading_cycle(db: Session):
 
     open_count = db.query(OpenPosition).filter(OpenPosition.status == PositionStatus.OPEN).count()
     logger.info(f"=== Cycle Done | Cash: ${portfolio_service.get_cash_balance():.2f} | Open: {open_count} | Today P&L: ${get_today_pnl(db):.2f} ===")
+    _log("CYCLE", "-", f"Done | Open: {open_count} | P&L today: ${get_today_pnl(db):.2f}")
 
 def _get_prices(symbol: str):
     if settings.DATA_SOURCE == "crypto":
@@ -84,20 +102,26 @@ def _process_symbol(symbol: str, db: Session):
         total_open = db.query(OpenPosition).filter(OpenPosition.status == PositionStatus.OPEN).count()
         if total_open >= settings.MAX_OPEN_POSITIONS:
             logger.info(f"[{symbol}] BUY blocked — max {settings.MAX_OPEN_POSITIONS} positions already open")
+            _log("BLOCKED", symbol, f"Max {settings.MAX_OPEN_POSITIONS} positions open")
         elif not _is_uptrend(df):
             logger.info(f"[{symbol}] BUY blocked — price below 50-EMA (downtrend)")
+            _log("BLOCKED", symbol, "Downtrend (below EMA)")
         elif risk_manager.is_high_volatility(current_price, atr, settings.MAX_ATR_PERCENT):
             logger.info(f"[{symbol}] BUY blocked — ATR {atr:.4f} = {atr/current_price*100:.1f}% of price (too volatile)")
+            _log("BLOCKED", symbol, f"High volatility ({atr/current_price*100:.1f}% ATR)")
         elif _is_low_liquidity_hour():
             logger.info(f"[{symbol}] BUY blocked — low liquidity window (01-05 UTC weekend)")
+            _log("BLOCKED", symbol, "Low liquidity (01-05 UTC weekend)")
         elif ml_prob is not None and ml_prob < 0.55:
             logger.info(f"[{symbol}] BUY blocked by ML model (win probability: {ml_prob:.0%} < 55%)")
+            _log("BLOCKED", symbol, f"ML: {ml_prob:.0%} win prob (< 55%)")
         else:
             _execute_buy(symbol, current_price, atr, result.score, result.breakdown, db)
     elif result.signal == "SELL" and has_open:
         _close_by_signal(symbol, current_price, db)
     else:
         logger.info(f"[{symbol}] HOLD")
+        _log("HOLD", symbol, f"Score: {result.score}")
 
 def _is_uptrend(df) -> bool:
     if settings.DISABLE_TREND_FILTER:
@@ -172,6 +196,7 @@ def _execute_buy(symbol: str, price: float, atr: float, score: int, breakdown: d
     portfolio_service.apply_trade("BUY", symbol, qty, price)
     logger.info(f"[{symbol}] BUY {qty:.6f} @ ${price:.4f} | SL:${stop_loss:.4f} | Target:${target:.4f} | Score:{score}")
     telegram.notify_buy(symbol, price, stop_loss, target, qty)
+    _log("BUY", symbol, f"{qty:.4f} @ ${price:.4f} | Score:{score}")
 
 def _close_by_signal(symbol: str, price: float, db: Session):
     positions = db.query(OpenPosition).filter(
@@ -197,6 +222,8 @@ def _close_position(pos: OpenPosition, price: float, reason: PositionStatus, db:
     logger.info(f"[{pos.symbol}] SELL {pos.quantity:.6f} @ ${price:.4f} | P&L:{'+' if pnl >= 0 else ''}${pnl:.2f} | {reason.value}")
     if reason == PositionStatus.CLOSED_SIGNAL:
         telegram.notify_sell(pos.symbol, price, pnl, "Signal")
+    _event = "SELL" if reason == PositionStatus.CLOSED_SIGNAL else ("STOP" if reason == PositionStatus.CLOSED_STOP_LOSS else "TARGET")
+    _log(_event, pos.symbol, f"@ ${price:.4f} | P&L:{'+' if pnl >= 0 else ''}${pnl:.2f}")
 
 def _daily_limit_breached(db: Session) -> bool:
     max_loss = settings.INITIAL_BALANCE * (settings.MAX_DAILY_LOSS_PERCENT / 100.0)

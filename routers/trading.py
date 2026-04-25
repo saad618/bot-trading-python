@@ -254,6 +254,54 @@ def get_live_signals():
         "signals":        results,
     }
 
+@router.get("/activity")
+def get_activity():
+    return trading_svc.get_activity_log()
+
+@router.get("/pnl/history")
+def get_pnl_history(db: Session = Depends(get_db)):
+    from models import Trade, TradeType
+    from config import settings as cfg
+    trades = db.query(Trade).order_by(Trade.executed_at.asc()).all()
+    balance = cfg.INITIAL_BALANCE
+    points = [{"date": "Start", "balance": round(balance, 2)}]
+    for t in trades:
+        if t.type == TradeType.SELL and t.realized_pnl is not None:
+            balance += t.realized_pnl
+            label = t.executed_at.strftime("%d %b") if t.executed_at else ""
+            points.append({"date": label, "balance": round(balance, 2)})
+    return points
+
+@router.get("/stats/symbols")
+def get_symbol_stats(db: Session = Depends(get_db)):
+    from models import Trade, TradeType
+    trades = db.query(Trade).all()
+    stats: dict = {}
+    for t in trades:
+        s = t.symbol
+        if s not in stats:
+            stats[s] = {"symbol": s, "total": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+        if t.type == TradeType.SELL:
+            stats[s]["total"] += 1
+            stats[s]["pnl"] = round(stats[s]["pnl"] + (t.realized_pnl or 0.0), 2)
+            if (t.realized_pnl or 0) > 0:
+                stats[s]["wins"] += 1
+            else:
+                stats[s]["losses"] += 1
+    result = list(stats.values())
+    for r in result:
+        r["win_rate"] = round(r["wins"] / r["total"] * 100, 1) if r["total"] > 0 else 0.0
+    return sorted(result, key=lambda x: x["pnl"], reverse=True)
+
+@router.post("/config/update")
+def update_config(buy_threshold: int = None):
+    from config import settings as cfg
+    from database import set_setting
+    if buy_threshold is not None:
+        cfg.BUY_SCORE_THRESHOLD = buy_threshold
+        set_setting("buy_threshold", str(buy_threshold))
+    return {"buy_threshold": cfg.BUY_SCORE_THRESHOLD, "sell_threshold": cfg.SELL_SCORE_THRESHOLD}
+
 @router.get("/symbols")
 def get_symbols():
     from config import settings

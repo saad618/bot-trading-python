@@ -28,6 +28,10 @@ async def lifespan(app: FastAPI):
             logger.info(f"[Startup] Loaded symbols from DB: {settings.SYMBOLS}")
         else:
             logger.info(f"[Startup] No saved symbols in DB — using defaults: {settings.SYMBOLS}")
+        saved_thr = get_setting("buy_threshold")
+        if saved_thr:
+            settings.BUY_SCORE_THRESHOLD = int(saved_thr)
+            logger.info(f"[Startup] Loaded buy_threshold from DB: {settings.BUY_SCORE_THRESHOLD}")
     except Exception as e:
         logger.warning(f"[Startup] Could not load symbols from DB: {e} — using defaults")
     start_scheduler()

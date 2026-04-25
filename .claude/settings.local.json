@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Read(//c/bsbu repo/trading_bot_flutter/lib/**)",
+      "Read(//c/bsbu repo/trading_bot_flutter/lib/services/**)",
+      "Read(//c/bsbu repo/trading_bot_flutter/lib/screens/**)",
+      "Read(//c/bsbu repo/trading_bot_flutter/**)",
+      "Bash(curl -s http://localhost:8080/api/trading/status)",
+      "Bash(python -m uvicorn main:app --port 8080 --log-level warning)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import uvicorn; print\\('uvicorn ok'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -s \"https://bot-trading-python-production.up.railway.app/api/config\")",
+      "Bash(curl -s \"https://bot-trading-python-production.up.railway.app/api/positions\")",
+      "Bash(curl -s \"https://bot-trading-python-production.up.railway.app/api/trades\")",
+      "Bash(curl -s \"https://bot-trading-python-production.up.railway.app/api/signals\")",
+      "Bash(curl -s -X POST \"https://bot-trading-python-production.up.railway.app/api/trading/execute\")",
+      "Bash(git commit -m 'Train ML from 2 years of backtest data for more samples *)",
+      "Bash(git commit -m 'Auto-clear backtest cache before ML training to force 2-year fetch *)",
+      "Bash(git commit -m 'Fetch 1000 Binance candles \\(~2.7 years\\) for richer backtest/ML training *)",
+      "Bash(git commit -m 'Clear Binance service cache too — was causing stale 500-bar data to persist *)",
+      "Bash(awk '{print $NF}')"
+    ],
+    "additionalDirectories": [
+      "c:\\bsbu repo\\trading_bot_flutter\\lib\\screens",
+      "c:\\bsbu repo\\trading_bot_flutter\\lib\\services",
+      "c:\\bsbu repo\\trading_bot_flutter\\lib"
+    ]
+  }
+}
