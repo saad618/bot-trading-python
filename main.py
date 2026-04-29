@@ -34,10 +34,6 @@ async def lifespan(app: FastAPI):
             logger.info(f"[Startup] Loaded buy_threshold from DB: {settings.BUY_SCORE_THRESHOLD}")
     except Exception as e:
         logger.warning(f"[Startup] Could not load symbols from DB: {e} — using defaults")
-    raw_ds = os.getenv("DATA_SOURCE", "NOT_SET")
-    logger.info(f"[Startup] DATA_SOURCE raw env value: {repr(raw_ds)}")
-    from config import settings as cfg
-    logger.info(f"[Startup] DATA_SOURCE parsed: {repr(cfg.DATA_SOURCE)}")
     start_scheduler()
     yield
 
