@@ -24,13 +24,13 @@ class Settings:
     RSI_PERIOD = 14
     BREAKOUT_PERIOD = 20
 
-    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "3").strip().lstrip("=").strip())
+    BUY_SCORE_THRESHOLD = int(os.getenv("BUY_SCORE_THRESHOLD", "4").strip().lstrip("=").strip())
     SELL_SCORE_THRESHOLD = int(os.getenv("SELL_SCORE_THRESHOLD", "-3").strip().lstrip("=").strip())
 
     POSITION_SIZE_PERCENT = float(os.getenv("POSITION_SIZE_PERCENT", "2.0"))
     POSITION_SIZE_MIN_PCT = float(os.getenv("POSITION_SIZE_MIN_PCT", "1.0"))  # weak signal
     POSITION_SIZE_MAX_PCT = float(os.getenv("POSITION_SIZE_MAX_PCT", "4.0"))  # strong signal
-    MAX_OPEN_POSITIONS    = int(os.getenv("MAX_OPEN_POSITIONS", "3").strip().lstrip("=").strip())
+    MAX_OPEN_POSITIONS    = int(os.getenv("MAX_OPEN_POSITIONS", "6").strip().lstrip("=").strip())
     # Crypto needs wider stops/targets and a higher daily-loss tolerance
     STOP_LOSS_PERCENT     = float(os.getenv("STOP_LOSS_PERCENT",     "3.0" if _crypto else "1.5"))
     TARGET_PERCENT        = float(os.getenv("TARGET_PERCENT",        "6.0" if _crypto else "3.0"))
