@@ -164,9 +164,12 @@ def _check_open_positions(symbol: str, price: float, atr: float, db: Session):
             db.commit()
 
         if price <= pos.stop_loss_price:
-            loss = (price - pos.entry_price) * pos.quantity
-            logger.warning(f"[{symbol}] STOP-LOSS hit @ ${price:.4f}")
-            telegram.notify_stop_loss(symbol, price, abs(loss))
+            pnl = (price - pos.entry_price) * pos.quantity
+            logger.warning(f"[{symbol}] STOP-LOSS hit @ ${price:.4f} | P&L: {'+' if pnl >= 0 else ''}${pnl:.2f}")
+            if pnl >= 0:
+                telegram.notify_sell(symbol, price, pnl, "Trailing Stop (profit protected)")
+            else:
+                telegram.notify_stop_loss(symbol, price, abs(pnl))
             _close_position(pos, price, PositionStatus.CLOSED_STOP_LOSS, db)
         elif price >= pos.target_price:
             profit = (price - pos.entry_price) * pos.quantity
